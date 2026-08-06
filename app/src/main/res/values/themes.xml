@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Theme for Light mode -->
+    <style name="Theme.TimelineViewer" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary branding color -->
+        <item name="colorPrimary">@color/primary_blue</item>
+        <item name="android:statusBarColor">?attr/colorPrimary</item>
+        <item name="android:navigationBarColor">@color/light_background</item>
+        <item name="android:windowBackground">@color/light_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- Surface and background defaults -->
+    <color name="primary_blue">#2563EB</color>
+    <color name="accent_gold">#F59E0B</color>
+    <color name="accent_green">#10B981</color>
+    <color name="light_background">#F8FAFC</color>
+    <color name="light_surface">#FFFFFF</color>
+</resources>
