@@ -1,0 +1,75 @@
+package com.example.timelineviewer.data.model
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
+
+enum class TransportMode(val label: String, val hexColor: Long) {
+    WALKING("Walking", 0xFF3B82F6),   // Blue
+    CYCLING("Cycling", 0xFFF59E0B),   // Amber/Yellow
+    DRIVING("Driving", 0xFFEF4444),   // Red
+    TRANSIT("Transit", 0xFF10B981),   // Green
+    UNKNOWN("Unknown", 0xFF6B7280)    // Gray
+}
+
+@Serializable
+@Entity(tableName = "journeys")
+data class Journey(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val description: String = "",
+    val startTime: Long,
+    val endTime: Long,
+    val totalDistanceKm: Double,
+    val totalDurationSeconds: Long,
+    val pointCount: Int,
+    val stopCount: Int,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Serializable
+@Entity(tableName = "route_points")
+data class RoutePoint(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val journeyId: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val timestamp: Long,
+    val speedKmh: Double = 0.0,
+    val bearing: Float = 0f,
+    val sequenceOrder: Int
+)
+
+@Serializable
+@Entity(tableName = "stops")
+data class Stop(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val journeyId: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val name: String,
+    val startTime: Long,
+    val endTime: Long,
+    val durationSeconds: Long,
+    val sequenceOrder: Int
+)
+
+@Serializable
+@Entity(tableName = "transport_segments")
+data class TransportSegment(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val journeyId: Long,
+    val startIndex: Int,
+    val endIndex: Int,
+    val mode: TransportMode,
+    val distanceKm: Double,
+    val durationSeconds: Long,
+    val averageSpeedKmh: Double
+)
+
+data class JourneyDetailData(
+    val journey: Journey,
+    val points: List<RoutePoint>,
+    val stops: List<Stop>,
+    val segments: List<TransportSegment>
+)

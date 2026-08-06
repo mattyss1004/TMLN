@@ -1,0 +1,9 @@
+{
+  "name": "travel-map-android",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Building Android Applet...' && exit 0",
+    "lint": "exit 0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Cinematic Travel Map Generator",
+  "description": "Visualize Google Timeline data, routes, and stops on an interactive map with transport mode colors and playback animations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
