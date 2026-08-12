@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.timelineviewer.data.model.JourneyDetailData
+import com.example.timelineviewer.data.model.OfflineMapRegion
+import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.ui.components.*
 import java.text.SimpleDateFormat
@@ -31,10 +33,13 @@ fun JourneyDetailScreen(
     isPlaying: Boolean,
     currentPointIndex: Int,
     playbackSpeed: Float,
+    offlineMapRegion: OfflineMapRegion?,
     onBackClick: () -> Unit,
     onPlayPauseToggle: () -> Unit,
     onSeekToIndex: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    onDownloadOffline: () -> Unit,
+    onRemoveOffline: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var mapStyle by remember { mutableStateOf(MapStyle.CINEMATIC) }
@@ -149,6 +154,14 @@ fun JourneyDetailScreen(
                     }
 
                     item {
+                        OfflineMapPackCard(
+                            region = offlineMapRegion,
+                            onDownload = onDownloadOffline,
+                            onRemove = onRemoveOffline
+                        )
+                    }
+
+                    item {
                         JourneyStorySummary(detail)
                     }
 
@@ -167,6 +180,80 @@ fun JourneyDetailScreen(
             journeyTitle = detail.journey.title,
             onDismiss = { showVideoExportDialog = false }
         )
+    }
+}
+
+@Composable
+private fun OfflineMapPackCard(
+    region: OfflineMapRegion?,
+    onDownload: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val isDownloading = region?.status == OfflineRegionStatus.DOWNLOADING
+    val isAvailable = region?.status == OfflineRegionStatus.AVAILABLE
+    val isFailed = region?.status == OfflineRegionStatus.FAILED
+    val headline = when {
+        isDownloading -> "Preparing offline map…"
+        isAvailable -> "Map available offline"
+        isFailed -> "Offline map needs attention"
+        else -> "Keep this journey offline"
+    }
+    val message = when {
+        isDownloading -> "Downloading the map styles and a focused route corridor."
+        isAvailable -> "This route and its map styles are stored for your next connection-free replay."
+        isFailed -> region?.lastError ?: "The map pack could not be downloaded."
+        else -> "Download a focused Mapbox corridor for reliable replay without a connection."
+    }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (isAvailable) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                Icon(
+                    imageVector = if (isAvailable) Icons.Default.DownloadDone else Icons.Default.DownloadForOffline,
+                    contentDescription = null,
+                    tint = if (isAvailable) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.primary
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(headline, style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (isDownloading) {
+                LinearProgressIndicator(
+                    progress = { region?.progress ?: 0f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "${((region?.progress ?: 0f) * 100).toInt()}% downloaded",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isAvailable) {
+                    OutlinedButton(onClick = onRemove) { Text("Remove offline pack") }
+                } else {
+                    Button(onClick = onDownload, enabled = !isDownloading) {
+                        Text(if (isFailed) "Try again" else "Download for offline")
+                    }
+                }
+            }
+        }
     }
 }
 

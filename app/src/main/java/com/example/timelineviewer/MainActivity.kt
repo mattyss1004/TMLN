@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
             val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
 
             val activeDetail by viewModel.activeJourneyDetail.collectAsStateWithLifecycle()
+            val activeOfflineMapRegion by viewModel.activeOfflineMapRegion.collectAsStateWithLifecycle()
             val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
             val currentPointIndex by viewModel.currentPointIndex.collectAsStateWithLifecycle()
             val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
@@ -43,10 +44,13 @@ class MainActivity : ComponentActivity() {
                             isPlaying = isPlaying,
                             currentPointIndex = currentPointIndex,
                             playbackSpeed = playbackSpeed,
+                            offlineMapRegion = activeOfflineMapRegion,
                             onBackClick = { viewModel.clearActiveJourney() },
                             onPlayPauseToggle = { viewModel.togglePlayPause() },
                             onSeekToIndex = { viewModel.seekToIndex(it) },
-                            onSpeedChange = { viewModel.setSpeed(it) }
+                            onSpeedChange = { viewModel.setSpeed(it) },
+                            onDownloadOffline = { viewModel.downloadActiveJourneyForOfflineUse() },
+                            onRemoveOffline = { viewModel.removeActiveJourneyOfflinePack() }
                         )
                     } else {
                         HomeScreen(

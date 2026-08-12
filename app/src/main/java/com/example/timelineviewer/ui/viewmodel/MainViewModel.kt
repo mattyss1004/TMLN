@@ -7,10 +7,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
+import com.example.timelineviewer.data.model.OfflineMapRegion
+import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.repository.JourneyRepository
 import com.example.timelineviewer.data.seed.SampleDataSeeder
-import kotlinx.coroutines.Job
+import com.example.timelineviewer.data.service.OfflineMapPackManager
+import com.mapbox.maps.Style
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,6 +28,7 @@ import kotlinx.coroutines.withContext
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: JourneyRepository
+    private val offlineMapPackManager by lazy { OfflineMapPackManager(application) }
 
     val selectedJourneyIds = MutableStateFlow<Set<Long>>(emptySet())
     val searchQuery = MutableStateFlow("")
@@ -32,20 +37,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeJourneyDetail = MutableStateFlow<JourneyDetailData?>(null)
     val activeJourneyDetail: StateFlow<JourneyDetailData?> = _activeJourneyDetail.asStateFlow()
 
+    private val _activeOfflineMapRegion = MutableStateFlow<OfflineMapRegion?>(null)
+    val activeOfflineMapRegion: StateFlow<OfflineMapRegion?> = _activeOfflineMapRegion.asStateFlow()
+
     // Playback state
     val isPlaying = MutableStateFlow(false)
     val currentPointIndex = MutableStateFlow(0)
     val playbackSpeed = MutableStateFlow(1f)
 
     private var playbackJob: Job? = null
-
     val journeys: StateFlow<List<Journey>>
 
     init {
         val db = AppDatabase.getDatabase(application)
         repository = JourneyRepository(db)
 
-        // Seed initial sample journeys if DB is empty
         viewModelScope.launch {
             SampleDataSeeder.seedIfEmpty(db)
         }
@@ -54,7 +60,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (query.isBlank()) list
             else list.filter {
                 it.title.contains(query, ignoreCase = true) ||
-                it.description.contains(query, ignoreCase = true)
+                    it.description.contains(query, ignoreCase = true)
             }
         }.stateIn(
             scope = viewModelScope,
@@ -68,59 +74,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleJourneySelection(id: Long) {
-        val current = selectedJourneyIds.value.toMutableSet()
-        if (current.contains(id)) {
-            current.remove(id)
-        } else {
-            current.add(id)
+        selectedJourneyIds.value = selectedJourneyIds.value.toMutableSet().apply {
+            if (!add(id)) remove(id)
         }
-        selectedJourneyIds.value = current
     }
 
     fun selectAllJourneys(selectAll: Boolean) {
-        if (selectAll) {
-            selectedJourneyIds.value = journeys.value.map { it.id }.toSet()
-        } else {
-            selectedJourneyIds.value = emptySet()
-        }
+        selectedJourneyIds.value = if (selectAll) journeys.value.map { it.id }.toSet() else emptySet()
     }
 
     fun deleteSelectedJourneys() {
         viewModelScope.launch {
             val ids = selectedJourneyIds.value.toList()
+            removeOfflinePacks(ids)
             repository.deleteJourneys(ids)
             selectedJourneyIds.value = emptySet()
             if (_activeJourneyDetail.value?.journey?.id in ids) {
                 _activeJourneyDetail.value = null
+                _activeOfflineMapRegion.value = null
             }
         }
     }
 
     fun deleteJourney(id: Long) {
         viewModelScope.launch {
+            removeOfflinePacks(listOf(id))
             repository.deleteJourney(id)
-            val set = selectedJourneyIds.value.toMutableSet()
-            set.remove(id)
-            selectedJourneyIds.value = set
+            selectedJourneyIds.value = selectedJourneyIds.value - id
             if (_activeJourneyDetail.value?.journey?.id == id) {
                 _activeJourneyDetail.value = null
+                _activeOfflineMapRegion.value = null
             }
         }
     }
 
     fun deleteAllJourneys() {
         viewModelScope.launch {
+            removeOfflinePacks(journeys.value.map { it.id })
             repository.deleteAllJourneys()
             selectedJourneyIds.value = emptySet()
             _activeJourneyDetail.value = null
+            _activeOfflineMapRegion.value = null
         }
     }
 
     fun loadJourneyDetail(id: Long) {
         viewModelScope.launch {
             pausePlayback()
-            val detail = repository.getJourneyDetail(id)
-            _activeJourneyDetail.value = detail
+            _activeJourneyDetail.value = repository.getJourneyDetail(id)
+            _activeOfflineMapRegion.value = repository.getOfflineMapRegion(id)
             currentPointIndex.value = 0
         }
     }
@@ -128,35 +130,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearActiveJourney() {
         pausePlayback()
         _activeJourneyDetail.value = null
+        _activeOfflineMapRegion.value = null
     }
 
-    // Playback control functions
-    fun togglePlayPause() {
-        if (isPlaying.value) {
-            pausePlayback()
-        } else {
-            startPlayback()
+    fun downloadActiveJourneyForOfflineUse() {
+        val detail = activeJourneyDetail.value ?: return
+        if (detail.points.size < 2) return
+        viewModelScope.launch {
+            val regionId = OfflineMapPackManager.regionIdFor(detail.journey.id)
+            val downloading = OfflineMapRegion(
+                journeyId = detail.journey.id,
+                regionId = regionId,
+                status = OfflineRegionStatus.DOWNLOADING,
+                progress = 0f,
+                styleUri = Style.STANDARD,
+                minZoom = OfflineMapPackManager.MIN_ZOOM,
+                maxZoom = OfflineMapPackManager.MAX_ZOOM
+            )
+            _activeOfflineMapRegion.value = downloading
+            repository.upsertOfflineMapRegion(downloading)
+
+            try {
+                offlineMapPackManager.downloadJourney(detail.journey.id, detail.points) { progress ->
+                    _activeOfflineMapRegion.value = downloading.copy(progress = progress)
+                }
+                val available = downloading.copy(
+                    status = OfflineRegionStatus.AVAILABLE,
+                    progress = 1f,
+                    downloadedAt = System.currentTimeMillis(),
+                    lastError = null
+                )
+                _activeOfflineMapRegion.value = available
+                repository.upsertOfflineMapRegion(available)
+            } catch (exception: Exception) {
+                val failed = downloading.copy(
+                    status = OfflineRegionStatus.FAILED,
+                    lastError = exception.message ?: "Offline download failed"
+                )
+                _activeOfflineMapRegion.value = failed
+                repository.upsertOfflineMapRegion(failed)
+            }
         }
+    }
+
+    fun removeActiveJourneyOfflinePack() {
+        val detail = activeJourneyDetail.value ?: return
+        viewModelScope.launch {
+            runCatching { offlineMapPackManager.removeJourney(detail.journey.id) }
+            repository.deleteOfflineMapRegion(detail.journey.id)
+            _activeOfflineMapRegion.value = null
+        }
+    }
+
+    private fun removeOfflinePacks(ids: List<Long>) {
+        ids.forEach { id -> runCatching { offlineMapPackManager.removeJourney(id) } }
+    }
+
+    fun togglePlayPause() {
+        if (isPlaying.value) pausePlayback() else startPlayback()
     }
 
     private fun startPlayback() {
         val detail = activeJourneyDetail.value ?: return
         if (detail.points.isEmpty()) return
-
         isPlaying.value = true
         playbackJob?.cancel()
-
         playbackJob = viewModelScope.launch {
             while (isPlaying.value) {
                 val total = detail.points.size
-                val next = currentPointIndex.value + 1
-                if (next >= total) {
-                    currentPointIndex.value = 0
-                } else {
-                    currentPointIndex.value = next
-                }
-                val delayMs = (200 / playbackSpeed.value).toLong().coerceAtLeast(20L)
-                delay(delayMs)
+                currentPointIndex.value = (currentPointIndex.value + 1).let { if (it >= total) 0 else it }
+                delay((200 / playbackSpeed.value).toLong().coerceAtLeast(20L))
             }
         }
     }
@@ -174,14 +217,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSpeed(speed: Float) {
         playbackSpeed.value = speed
-        if (isPlaying.value) {
-            startPlayback() // restart loop with new speed
-        }
+        if (isPlaying.value) startPlayback()
     }
 
-    suspend fun importTimelineJson(jsonString: String, title: String): Boolean {
-        return repository.importTimelineJson(jsonString, title)
-    }
+    suspend fun importTimelineJson(jsonString: String, title: String): Boolean =
+        repository.importTimelineJson(jsonString, title)
 
     /** Opens a JSON/GeoJSON document as a stream so imports do not duplicate a large file in UI memory. */
     suspend fun importTimelineDocument(uri: Uri, title: String): Boolean = withContext(Dispatchers.IO) {
@@ -198,7 +238,5 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         endLat: Double,
         endLng: Double,
         stopNames: List<String>
-    ): Long {
-        return repository.addCustomJourney(title, description, startLat, startLng, endLat, endLng, stopNames)
-    }
+    ): Long = repository.addCustomJourney(title, description, startLat, startLng, endLat, endLng, stopNames)
 }

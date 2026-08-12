@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
+import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.data.parser.ParsedJourneyResult
@@ -39,6 +40,19 @@ class JourneyRepository(private val database: AppDatabase) {
 
     suspend fun deleteAllJourneys() = database.withTransaction {
         database.journeyDao().deleteAllJourneys()
+    }
+
+    fun observeOfflineMapRegion(journeyId: Long) = database.offlineMapRegionDao().observeForJourney(journeyId)
+
+    suspend fun upsertOfflineMapRegion(region: OfflineMapRegion) {
+        database.offlineMapRegionDao().upsert(region)
+    }
+
+    suspend fun getOfflineMapRegion(journeyId: Long): OfflineMapRegion? =
+        database.offlineMapRegionDao().getForJourney(journeyId)
+
+    suspend fun deleteOfflineMapRegion(journeyId: Long) {
+        database.offlineMapRegionDao().deleteForJourney(journeyId)
     }
 
     /** Parses pasted text on a background dispatcher, then writes the full journey atomically. */

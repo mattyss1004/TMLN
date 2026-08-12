@@ -114,4 +114,27 @@ object DatabaseMigrations {
             db.execSQL("CREATE INDEX index_transport_segments_journeyId_startIndex ON transport_segments (journeyId, startIndex)")
         }
     }
+
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS offline_map_regions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    journeyId INTEGER NOT NULL,
+                    regionId TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    progress REAL NOT NULL,
+                    styleUri TEXT NOT NULL,
+                    minZoom INTEGER NOT NULL,
+                    maxZoom INTEGER NOT NULL,
+                    downloadedAt INTEGER,
+                    lastError TEXT,
+                    FOREIGN KEY(journeyId) REFERENCES journeys(id) ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_offline_map_regions_journeyId ON offline_map_regions (journeyId)")
+        }
+    }
 }

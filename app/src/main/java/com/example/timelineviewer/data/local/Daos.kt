@@ -2,6 +2,8 @@ package com.example.timelineviewer.data.local
 
 import androidx.room.*
 import com.example.timelineviewer.data.model.Journey
+import com.example.timelineviewer.data.model.OfflineMapRegion
+import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.data.model.TransportMode
@@ -17,6 +19,16 @@ class Converters {
         TransportMode.valueOf(value)
     } catch (e: Exception) {
         TransportMode.UNKNOWN
+    }
+
+    @TypeConverter
+    fun fromOfflineRegionStatus(status: OfflineRegionStatus): String = status.name
+
+    @TypeConverter
+    fun toOfflineRegionStatus(value: String): OfflineRegionStatus = try {
+        OfflineRegionStatus.valueOf(value)
+    } catch (e: Exception) {
+        OfflineRegionStatus.NOT_DOWNLOADED
     }
 }
 
@@ -69,6 +81,21 @@ interface StopDao {
 
     @Query("DELETE FROM stops WHERE journeyId = :journeyId")
     suspend fun deleteStopsForJourney(journeyId: Long)
+}
+
+@Dao
+interface OfflineMapRegionDao {
+    @Query("SELECT * FROM offline_map_regions WHERE journeyId = :journeyId LIMIT 1")
+    fun observeForJourney(journeyId: Long): Flow<OfflineMapRegion?>
+
+    @Query("SELECT * FROM offline_map_regions WHERE journeyId = :journeyId LIMIT 1")
+    suspend fun getForJourney(journeyId: Long): OfflineMapRegion?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(region: OfflineMapRegion): Long
+
+    @Query("DELETE FROM offline_map_regions WHERE journeyId = :journeyId")
+    suspend fun deleteForJourney(journeyId: Long)
 }
 
 @Dao

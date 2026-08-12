@@ -114,3 +114,36 @@ data class JourneyDetailData(
     val stops: List<Stop>,
     val segments: List<TransportSegment>
 )
+
+
+enum class OfflineRegionStatus {
+    NOT_DOWNLOADED,
+    DOWNLOADING,
+    AVAILABLE,
+    FAILED
+}
+
+@Entity(
+    tableName = "offline_map_regions",
+    foreignKeys = [
+        ForeignKey(
+            entity = Journey::class,
+            parentColumns = ["id"],
+            childColumns = ["journeyId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["journeyId"], unique = true)]
+)
+data class OfflineMapRegion(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val journeyId: Long,
+    val regionId: String,
+    val status: OfflineRegionStatus = OfflineRegionStatus.NOT_DOWNLOADED,
+    val progress: Float = 0f,
+    val styleUri: String,
+    val minZoom: Int,
+    val maxZoom: Int,
+    val downloadedAt: Long? = null,
+    val lastError: String? = null
+)
