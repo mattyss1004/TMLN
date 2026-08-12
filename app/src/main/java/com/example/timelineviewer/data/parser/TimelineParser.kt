@@ -5,10 +5,19 @@ import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.data.model.TransportMode
 import com.example.timelineviewer.data.model.TransportSegment
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
-import com.google.gson.JsonParser
-import kotlin.math.*
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import java.io.Reader
+import java.io.StringReader
+import java.time.Instant
+import java.util.ArrayDeque
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class ParsedJourneyResult(
     val journey: Journey,
@@ -17,144 +26,53 @@ data class ParsedJourneyResult(
     val segments: List<TransportSegment>
 )
 
+/**
+ * Canonical Google Timeline / GeoJSON import path. The raw JSON is read token by token instead of
+ * being expanded into a full DOM tree, which keeps large Takeout imports substantially safer for
+ * device memory. All import formats are normalised into [RawPoint] before route analysis.
+ */
 object TimelineParser {
 
-    /**
-     * Enhanced parser with dwell-time stop detection and Douglas-Peucker smoothing.
-     */
-    fun parseTimelineJson(jsonString: String, defaultTitle: String = "Imported Timeline Journey"): ParsedJourneyResult? {
+    private const val MAX_RAW_POINTS = 250_000
+    private const val DEFAULT_POINT_INTERVAL_MS = 10_000L
+    private const val JITTER_SPIKE_KM = 0.5
+    private const val JITTER_RETURN_KM = 0.1
+    private const val SIMPLIFICATION_TOLERANCE_KM = 0.007
+    private const val STOP_RADIUS_KM = 0.06
+    private const val MIN_DWELL_MS = 180_000L
+
+    fun parseTimelineJson(
+        jsonString: String,
+        defaultTitle: String = "Imported Timeline Journey"
+    ): ParsedJourneyResult? = parseTimeline(StringReader(jsonString), defaultTitle)
+
+    fun parseTimeline(reader: Reader, defaultTitle: String = "Imported Timeline Journey"): ParsedJourneyResult? {
         return try {
-            val jsonElement = JsonParser.parseString(jsonString)
             val rawPoints = mutableListOf<RawPoint>()
-
-            // 1. Ingestion Phase
-            when {
-                jsonElement.isJsonObject -> {
-                    val root = jsonElement.asJsonObject
-                    when {
-                        root.has("timelineObjects") -> parseGoogleTakeoutFormat(root.getAsJsonArray("timelineObjects"), rawPoints)
-                        root.has("locations") -> parseGoogleLocationsFormat(root.getAsJsonArray("locations"), rawPoints)
-                        root.has("features") -> parseGeoJsonFormat(root.getAsJsonArray("features"), rawPoints)
-                    }
+            JsonReader(reader).use { jsonReader ->
+                jsonReader.isLenient = true
+                when (jsonReader.peek()) {
+                    JsonToken.BEGIN_OBJECT -> parseRootObject(jsonReader, rawPoints)
+                    JsonToken.BEGIN_ARRAY -> parseGenericPointArray(jsonReader, rawPoints)
+                    else -> jsonReader.skipValue()
                 }
-                jsonElement.isJsonArray -> parsePointArray(jsonElement.asJsonArray, rawPoints)
             }
 
-            if (rawPoints.isEmpty()) return null
+            val chronological = normaliseAndSort(rawPoints)
+            if (chronological.isEmpty()) return null
 
-            // 2. Pre-processing: Sort and Clean
-            rawPoints.sortBy { it.timestamp }
-            val cleanedPoints = removeJitter(rawPoints)
-
-            // 3. Douglas-Peucker Smoothing (Epsilon ~ 5 meters)
-            val smoothedPoints = simplifyPoints(cleanedPoints, 0.00005)
-
-            // 4. Analysis Phase
-            val routePoints = mutableListOf<RoutePoint>()
+            val cleaned = removeJitter(chronological)
             val stops = mutableListOf<Stop>()
-            val segments = mutableListOf<TransportSegment>()
+            detectDwellStops(cleaned, stops)
+            val displayPoints = simplifyPointsPreservingVisits(cleaned, SIMPLIFICATION_TOLERANCE_KM)
 
-            var totalDistKm = 0.0
-            var maxSpeed = 0.0
-            var currentSegmentStart = 0
-            var currentMode = TransportMode.UNKNOWN
-            val modeDurationMap = mutableMapOf<TransportMode, Long>()
-
-            for (i in smoothedPoints.indices) {
-                val pt = smoothedPoints[i]
-                var speed = 0.0
-                var distFromPrev = 0.0
-
-                if (i > 0) {
-                    val prev = smoothedPoints[i - 1]
-                    distFromPrev = calculateDistanceKm(prev.lat, prev.lng, pt.lat, pt.lng)
-                    totalDistKm += distFromPrev
-
-                    val timeDiffSec = ((pt.timestamp - prev.timestamp) / 1000.0).coerceAtLeast(0.1)
-                    speed = (distFromPrev / timeDiffSec) * 3600.0 // km/h
-                    if (speed > maxSpeed && speed < 300.0) maxSpeed = speed // Ignore supersonic GPS spikes
-                }
-
-                val detectedMode = detectTransportMode(speed, pt.modeOverride)
-
-                // Track dominant mode duration
-                if (i > 0) {
-                    val duration = (pt.timestamp - smoothedPoints[i-1].timestamp) / 1000L
-                    modeDurationMap[detectedMode] = (modeDurationMap[detectedMode] ?: 0L) + duration
-                }
-
-                // Detect segment change
-                if (i > 0 && (detectedMode != currentMode || i == smoothedPoints.size - 1)) {
-                    val segmentDist = calculateDistanceKm(
-                        smoothedPoints[currentSegmentStart].lat,
-                        smoothedPoints[currentSegmentStart].lng,
-                        pt.lat,
-                        pt.lng
-                    )
-                    val segmentDuration = ((pt.timestamp - smoothedPoints[currentSegmentStart].timestamp) / 1000L).coerceAtLeast(1L)
-
-                    segments.add(
-                        TransportSegment(
-                            journeyId = 0L,
-                            startIndex = currentSegmentStart,
-                            endIndex = i,
-                            mode = currentMode,
-                            distanceKm = (segmentDist * 100).roundToInt() / 100.0,
-                            durationSeconds = segmentDuration,
-                            averageSpeedKmh = if (segmentDuration > 0) (segmentDist / (segmentDuration / 3600.0)) else 0.0
-                        )
-                    )
-                    currentSegmentStart = i
-                    currentMode = detectedMode
-                } else if (i == 0) {
-                    currentMode = detectedMode
-                }
-
-                val bearing = if (i > 0) {
-                    calculateBearing(smoothedPoints[i - 1].lat, smoothedPoints[i - 1].lng, pt.lat, pt.lng)
-                } else 0f
-
-                routePoints.add(
-                    RoutePoint(
-                        journeyId = 0L,
-                        latitude = pt.lat,
-                        longitude = pt.lng,
-                        timestamp = pt.timestamp,
-                        speedKmh = speed,
-                        bearing = bearing,
-                        sequenceOrder = i
-                    )
-                )
-            }
-
-            // 5. Dwell-Time Stop Detection
-            detectDwellStops(smoothedPoints, stops)
-
-            // 6. Final Metadata Assembly
-            val startTime = smoothedPoints.first().timestamp
-            val endTime = smoothedPoints.last().timestamp
-            val durationSec = ((endTime - startTime) / 1000L).coerceAtLeast(1L)
-            val dominantMode = modeDurationMap.maxByOrNull { it.value }?.key ?: TransportMode.UNKNOWN
-            val highlightStop = stops.maxByOrNull { it.durationSeconds }?.name
-
-            val journey = Journey(
-                title = defaultTitle,
-                description = "Cinematic route through ${stops.size} key locations via ${dominantMode.label.lowercase()}.",
-                startTime = startTime,
-                endTime = endTime,
-                totalDistanceKm = (totalDistKm * 100).roundToInt() / 100.0,
-                totalDurationSeconds = durationSec,
-                pointCount = routePoints.size,
-                stopCount = stops.size,
-                maxSpeedKmh = (maxSpeed * 10).roundToInt() / 10.0,
-                averageSpeedKmh = if (durationSec > 0) ((totalDistKm / (durationSec / 3600.0)) * 10).roundToInt() / 10.0 else 0.0,
-                dominantMode = dominantMode,
-                highlightPlaceName = highlightStop
+            buildJourneyResult(
+                points = displayPoints,
+                stops = stops,
+                defaultTitle = defaultTitle
             )
-
-            ParsedJourneyResult(journey, routePoints, stops, segments)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (exception: Exception) {
+            exception.printStackTrace()
             null
         }
     }
@@ -168,246 +86,639 @@ object TimelineParser {
         val modeOverride: TransportMode? = null
     )
 
-    private fun removeJitter(points: List<RawPoint>): List<RawPoint> {
-        if (points.size < 3) return points
-        val result = mutableListOf<RawPoint>()
-        result.add(points.first())
+    private data class LocationData(
+        val lat: Double = 0.0,
+        val lng: Double = 0.0,
+        val name: String? = null
+    )
 
-        for (i in 1 until points.size - 1) {
-            val prev = points[i - 1]
-            val curr = points[i]
-            val next = points[i + 1]
+    private data class DurationData(
+        val start: Long = 0L,
+        val end: Long = 0L
+    )
 
-            val distPrev = calculateDistanceKm(prev.lat, prev.lng, curr.lat, curr.lng)
-            val distNext = calculateDistanceKm(curr.lat, curr.lng, next.lat, next.lng)
+    private fun parseRootObject(reader: JsonReader, output: MutableList<RawPoint>) {
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "timelineObjects" -> parseTimelineObjects(reader, output)
+                "locations" -> parseRawLocations(reader, output)
+                "features" -> parseGeoJsonFeatures(reader, output)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+    }
 
-            // If it's a sudden spike (> 500m) that returns immediately, filter it
-            if (distPrev > 0.5 && distNext > 0.5 && calculateDistanceKm(prev.lat, prev.lng, next.lat, next.lng) < 0.1) {
+    private fun parseTimelineObjects(reader: JsonReader, output: MutableList<RawPoint>) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return
+        }
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
                 continue
             }
-            result.add(curr)
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "activitySegment" -> parseActivitySegment(reader, output)
+                    "placeVisit" -> parsePlaceVisit(reader, output)
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
         }
-        result.add(points.last())
+        reader.endArray()
+    }
+
+    private fun parseActivitySegment(reader: JsonReader, output: MutableList<RawPoint>) {
+        var startLocation = LocationData()
+        var endLocation = LocationData()
+        var duration = DurationData()
+        var activityType: String? = null
+        val waypoints = mutableListOf<LocationData>()
+
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "startLocation" -> startLocation = readLocation(reader)
+                "endLocation" -> endLocation = readLocation(reader)
+                "duration" -> duration = readDuration(reader)
+                "activityType" -> activityType = reader.nextNullableString()
+                "waypointPath" -> readWaypointPath(reader, waypoints)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+
+        val mode = transportModeFor(activityType)
+        val startTime = duration.start
+        val endTime = duration.end.coerceAtLeast(startTime)
+        if (startLocation.isValid()) {
+            appendPoint(output, RawPoint(startLocation.lat, startLocation.lng, startTime, modeOverride = mode))
+        }
+        waypoints.forEachIndexed { index, waypoint ->
+            if (waypoint.isValid()) {
+                val fraction = (index + 1).toDouble() / (waypoints.size + 1).toDouble()
+                val timestamp = startTime + ((endTime - startTime) * fraction).toLong()
+                appendPoint(output, RawPoint(waypoint.lat, waypoint.lng, timestamp, modeOverride = mode))
+            }
+        }
+        if (endLocation.isValid()) {
+            appendPoint(output, RawPoint(endLocation.lat, endLocation.lng, endTime, modeOverride = mode))
+        }
+    }
+
+    private fun parsePlaceVisit(reader: JsonReader, output: MutableList<RawPoint>) {
+        var location = LocationData()
+        var duration = DurationData()
+
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "location" -> location = readLocation(reader)
+                "duration" -> duration = readDuration(reader)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+
+        if (location.isValid()) {
+            val name = location.name ?: "Visited place"
+            appendPoint(output, RawPoint(location.lat, location.lng, duration.start, true, name))
+            appendPoint(
+                output,
+                RawPoint(
+                    location.lat,
+                    location.lng,
+                    duration.end.coerceAtLeast(duration.start + 1L),
+                    true,
+                    name
+                )
+            )
+        }
+    }
+
+    private fun parseRawLocations(reader: JsonReader, output: MutableList<RawPoint>) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return
+        }
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
+                continue
+            }
+            var lat = 0.0
+            var lng = 0.0
+            var timestamp = 0L
+            var mode: TransportMode? = null
+
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "latitudeE7" -> lat = reader.nextDoubleOrNull()?.div(1e7) ?: lat
+                    "longitudeE7" -> lng = reader.nextDoubleOrNull()?.div(1e7) ?: lng
+                    "latitude" -> lat = reader.nextDoubleOrNull() ?: lat
+                    "longitude" -> lng = reader.nextDoubleOrNull() ?: lng
+                    "timestampMs", "timestamp" -> timestamp = parseTimestamp(reader.nextNullableString())
+                    "activity" -> mode = readActivityMode(reader) ?: mode
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+
+            if (lat != 0.0 && lng != 0.0) {
+                appendPoint(output, RawPoint(lat, lng, timestamp, modeOverride = mode))
+            }
+        }
+        reader.endArray()
+    }
+
+    private fun parseGeoJsonFeatures(reader: JsonReader, output: MutableList<RawPoint>) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return
+        }
+        var sequence = output.size
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
+                continue
+            }
+            val coordinates = mutableListOf<LocationData>()
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "geometry" -> readGeoJsonGeometry(reader, coordinates)
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+            coordinates.forEach { location ->
+                appendPoint(
+                    output,
+                    RawPoint(
+                        location.lat,
+                        location.lng,
+                        System.currentTimeMillis() + (sequence++ * DEFAULT_POINT_INTERVAL_MS)
+                    )
+                )
+            }
+        }
+        reader.endArray()
+    }
+
+    private fun parseGenericPointArray(reader: JsonReader, output: MutableList<RawPoint>) {
+        var sequence = output.size
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
+                continue
+            }
+            var lat = 0.0
+            var lng = 0.0
+            var timestamp = 0L
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "lat", "latitude" -> lat = reader.nextDoubleOrNull() ?: lat
+                    "lng", "longitude" -> lng = reader.nextDoubleOrNull() ?: lng
+                    "timestamp", "timestampMs", "time" -> timestamp = parseTimestamp(reader.nextNullableString())
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+            if (lat != 0.0 && lng != 0.0) {
+                appendPoint(
+                    output,
+                    RawPoint(
+                        lat,
+                        lng,
+                        timestamp.takeIf { it > 0 } ?: System.currentTimeMillis() + (sequence++ * DEFAULT_POINT_INTERVAL_MS)
+                    )
+                )
+            }
+        }
+        reader.endArray()
+    }
+
+    private fun readLocation(reader: JsonReader): LocationData {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return LocationData()
+        }
+        var lat = 0.0
+        var lng = 0.0
+        var name: String? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "latitudeE7" -> lat = reader.nextDoubleOrNull()?.div(1e7) ?: lat
+                "longitudeE7" -> lng = reader.nextDoubleOrNull()?.div(1e7) ?: lng
+                "latitude" -> lat = reader.nextDoubleOrNull() ?: lat
+                "longitude" -> lng = reader.nextDoubleOrNull() ?: lng
+                "name" -> name = reader.nextNullableString()
+                "address" -> if (name == null) name = reader.nextNullableString() else reader.skipValue()
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return LocationData(lat, lng, name)
+    }
+
+    private fun readDuration(reader: JsonReader): DurationData {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return DurationData()
+        }
+        var start = 0L
+        var end = 0L
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "startTimestampMs", "startTimestamp" -> start = parseTimestamp(reader.nextNullableString())
+                "endTimestampMs", "endTimestamp" -> end = parseTimestamp(reader.nextNullableString())
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return DurationData(start, end)
+    }
+
+    private fun readWaypointPath(reader: JsonReader, output: MutableList<LocationData>) {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return
+        }
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "waypoints" -> {
+                    if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                        reader.skipValue()
+                    } else {
+                        reader.beginArray()
+                        while (reader.hasNext()) output += readLocation(reader)
+                        reader.endArray()
+                    }
+                }
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+    }
+
+    private fun readActivityMode(reader: JsonReader): TransportMode? {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return null
+        }
+        var result: TransportMode? = null
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
+                continue
+            }
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "activity" -> {
+                        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+                            reader.skipValue()
+                        } else {
+                            reader.beginArray()
+                            while (reader.hasNext()) {
+                                if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                                    reader.beginObject()
+                                    while (reader.hasNext()) {
+                                        when (reader.nextName()) {
+                                            "type" -> result = transportModeFor(reader.nextNullableString()) ?: result
+                                            else -> reader.skipValue()
+                                        }
+                                    }
+                                    reader.endObject()
+                                } else reader.skipValue()
+                            }
+                            reader.endArray()
+                        }
+                    }
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+        }
+        reader.endArray()
         return result
     }
 
-    private fun simplifyPoints(points: List<RawPoint>, epsilon: Double): List<RawPoint> {
-        if (points.size < 3) return points
-
-        var dmax = 0.0
-        var index = 0
-        val end = points.size - 1
-
-        for (i in 1 until end) {
-            val d = perpendicularDistance(points[i], points[0], points[end])
-            if (d > dmax) {
-                index = i
-                dmax = d
+    private fun readGeoJsonGeometry(reader: JsonReader, output: MutableList<LocationData>) {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return
+        }
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "coordinates" -> output += readCoordinateTree(reader)
+                else -> reader.skipValue()
             }
         }
-
-        return if (dmax > epsilon) {
-            val recResults1 = simplifyPoints(points.subList(0, index + 1), epsilon)
-            val recResults2 = simplifyPoints(points.subList(index, points.size), epsilon)
-            recResults1.dropLast(1) + recResults2
-        } else {
-            listOf(points.first(), points.last())
-        }
+        reader.endObject()
     }
 
-    private fun perpendicularDistance(pt: RawPoint, lineStart: RawPoint, lineEnd: RawPoint): Double {
-        val dx = lineEnd.lng - lineStart.lng
-        val dy = lineEnd.lat - lineStart.lat
-
-        val mag = sqrt(dx * dx + dy * dy)
-        if (mag == 0.0) return calculateDistanceKm(pt.lat, pt.lng, lineStart.lat, lineStart.lng)
-
-        val u = ((pt.lng - lineStart.lng) * dx + (pt.lat - lineStart.lat) * dy) / (mag * mag)
-        val pLat: Double
-        val pLng: Double
-
-        if (u < 0) {
-            pLat = lineStart.lat
-            pLng = lineStart.lng
-        } else if (u > 1) {
-            pLat = lineEnd.lat
-            pLng = lineEnd.lng
-        } else {
-            pLat = lineStart.lat + u * dy
-            pLng = lineStart.lng + u * dx
+    private fun readCoordinateTree(reader: JsonReader): List<LocationData> {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return emptyList()
+        }
+        val output = mutableListOf<LocationData>()
+        reader.beginArray()
+        if (!reader.hasNext()) {
+            reader.endArray()
+            return output
         }
 
-        return sqrt((pt.lat - pLat).pow(2) + (pt.lng - pLng).pow(2))
+        if (reader.peek() == JsonToken.NUMBER) {
+            val lng = reader.nextDouble()
+            val lat = if (reader.hasNext()) reader.nextDouble() else 0.0
+            while (reader.hasNext()) reader.skipValue()
+            reader.endArray()
+            if (lat != 0.0 && lng != 0.0) output += LocationData(lat, lng)
+            return output
+        }
+
+        while (reader.hasNext()) output += readCoordinateTree(reader)
+        reader.endArray()
+        return output
+    }
+
+    private fun appendPoint(output: MutableList<RawPoint>, point: RawPoint) {
+        if (output.size >= MAX_RAW_POINTS) {
+            throw IllegalArgumentException("This import exceeds the 250,000 point safety limit. Import a smaller time range.")
+        }
+        output += point
+    }
+
+    private fun normaliseAndSort(points: List<RawPoint>): List<RawPoint> {
+        val baseTime = System.currentTimeMillis()
+        return points
+            .asSequence()
+            .filter { it.lat in -90.0..90.0 && it.lng in -180.0..180.0 && !(it.lat == 0.0 && it.lng == 0.0) }
+            .mapIndexed { index, point ->
+                point.copy(timestamp = point.timestamp.takeIf { it > 0 } ?: baseTime + (index * DEFAULT_POINT_INTERVAL_MS))
+            }
+            .sortedBy { it.timestamp }
+            .toList()
+    }
+
+    private fun removeJitter(points: List<RawPoint>): List<RawPoint> {
+        if (points.size < 3) return points
+        val cleaned = mutableListOf(points.first())
+        for (index in 1 until points.lastIndex) {
+            val previous = points[index - 1]
+            val current = points[index]
+            val next = points[index + 1]
+            val outAndBack = calculateDistanceKm(previous.lat, previous.lng, next.lat, next.lng)
+            val distanceIn = calculateDistanceKm(previous.lat, previous.lng, current.lat, current.lng)
+            val distanceOut = calculateDistanceKm(current.lat, current.lng, next.lat, next.lng)
+            if (!current.isPlaceVisit && distanceIn > JITTER_SPIKE_KM && distanceOut > JITTER_SPIKE_KM && outAndBack < JITTER_RETURN_KM) {
+                continue
+            }
+            cleaned += current
+        }
+        cleaned += points.last()
+        return cleaned
+    }
+
+    private fun simplifyPointsPreservingVisits(points: List<RawPoint>, toleranceKm: Double): List<RawPoint> {
+        if (points.size < 3) return points
+        val anchorIndexes = buildList {
+            add(0)
+            points.forEachIndexed { index, point -> if (point.isPlaceVisit && index in 1 until points.lastIndex) add(index) }
+            add(points.lastIndex)
+        }.distinct().sorted()
+
+        val keptIndexes = linkedSetOf<Int>()
+        anchorIndexes.zipWithNext().forEach { (start, end) ->
+            simplifyRange(points, start, end, toleranceKm, keptIndexes)
+        }
+        return keptIndexes.sorted().map { points[it] }
+    }
+
+    private fun simplifyRange(
+        points: List<RawPoint>,
+        start: Int,
+        end: Int,
+        toleranceKm: Double,
+        keptIndexes: MutableSet<Int>
+    ) {
+        keptIndexes += start
+        keptIndexes += end
+        if (end - start < 2) return
+
+        val ranges = ArrayDeque<Pair<Int, Int>>()
+        ranges.add(start to end)
+        while (ranges.isNotEmpty()) {
+            val (rangeStart, rangeEnd) = ranges.removeLast()
+            var largestDistance = 0.0
+            var furthestIndex = -1
+            for (index in rangeStart + 1 until rangeEnd) {
+                val distance = perpendicularDistanceKm(points[index], points[rangeStart], points[rangeEnd])
+                if (distance > largestDistance) {
+                    largestDistance = distance
+                    furthestIndex = index
+                }
+            }
+            if (furthestIndex >= 0 && largestDistance > toleranceKm) {
+                keptIndexes += furthestIndex
+                ranges.add(rangeStart to furthestIndex)
+                ranges.add(furthestIndex to rangeEnd)
+            }
+        }
     }
 
     private fun detectDwellStops(points: List<RawPoint>, stops: MutableList<Stop>) {
-        var i = 0
-        val minDwellMs = 180000L // 3 minutes
-
-        while (i < points.size) {
-            var j = i + 1
-            var clusterLat = points[i].lat
-            var clusterLng = points[i].lng
+        var startIndex = 0
+        while (startIndex < points.size) {
+            val anchor = points[startIndex]
+            var endIndex = startIndex + 1
+            var latitudeSum = anchor.lat
+            var longitudeSum = anchor.lng
             var count = 1
 
-            while (j < points.size) {
-                val dist = calculateDistanceKm(points[i].lat, points[i].lng, points[j].lat, points[j].lng)
-                if (dist < 0.05) { // 50 meters radius
-                    clusterLat += points[j].lat
-                    clusterLng += points[j].lng
-                    count++
-                    j++
-                } else {
-                    break
-                }
+            while (endIndex < points.size && calculateDistanceKm(anchor.lat, anchor.lng, points[endIndex].lat, points[endIndex].lng) <= STOP_RADIUS_KM) {
+                latitudeSum += points[endIndex].lat
+                longitudeSum += points[endIndex].lng
+                count++
+                endIndex++
             }
 
-            val duration = points[j - 1].timestamp - points[i].timestamp
-            if (duration >= minDwellMs || points[i].isPlaceVisit) {
-                val avgLat = clusterLat / count
-                val avgLng = clusterLng / count
-                val name = points[i].placeName ?: "Spot #${stops.size + 1}"
-
-                val score = when {
-                    duration > 3600000L -> 90 // 1 hour+
-                    duration > 1800000L -> 70 // 30 mins+
-                    points[i].isPlaceVisit -> 85
-                    else -> 40
+            val cluster = points.subList(startIndex, endIndex)
+            val durationMs = cluster.last().timestamp - cluster.first().timestamp
+            val namedVisit = cluster.firstOrNull { it.isPlaceVisit }
+            if (durationMs >= MIN_DWELL_MS || namedVisit != null) {
+                val importance = when {
+                    durationMs >= 3_600_000L -> 90
+                    durationMs >= 1_800_000L -> 70
+                    namedVisit != null -> 85
+                    else -> 45
                 }
-
-                stops.add(Stop(
+                stops += Stop(
                     journeyId = 0L,
-                    latitude = avgLat,
-                    longitude = avgLng,
-                    name = name,
-                    startTime = points[i].timestamp,
-                    endTime = points[j - 1].timestamp,
-                    durationSeconds = duration / 1000L,
+                    latitude = latitudeSum / count,
+                    longitude = longitudeSum / count,
+                    name = namedVisit?.placeName ?: "Stop ${stops.size + 1}",
+                    startTime = cluster.first().timestamp,
+                    endTime = cluster.last().timestamp,
+                    durationSeconds = (durationMs / 1000L).coerceAtLeast(1L),
                     sequenceOrder = stops.size,
-                    importanceScore = score,
-                    category = if (score > 80) "Highlight" else "Waypoint"
-                ))
-                i = j
+                    importanceScore = importance,
+                    category = if (importance >= 80) "Highlight" else "Waypoint"
+                )
+            }
+            startIndex = max(startIndex + 1, endIndex)
+        }
+    }
+
+    private fun buildJourneyResult(
+        points: List<RawPoint>,
+        stops: List<Stop>,
+        defaultTitle: String
+    ): ParsedJourneyResult {
+        val routePoints = mutableListOf<RoutePoint>()
+        val segments = mutableListOf<TransportSegment>()
+        val modeDurations = mutableMapOf<TransportMode, Long>()
+        var totalDistance = 0.0
+        var maxSpeed = 0.0
+        var currentSegmentStart = 0
+        var currentMode = TransportMode.UNKNOWN
+
+        for (index in points.indices) {
+            val current = points[index]
+            var speed = 0.0
+            var distanceFromPrevious = 0.0
+            var intervalSeconds = 0L
+            if (index > 0) {
+                val previous = points[index - 1]
+                distanceFromPrevious = calculateDistanceKm(previous.lat, previous.lng, current.lat, current.lng)
+                intervalSeconds = ((current.timestamp - previous.timestamp) / 1000L).coerceAtLeast(1L)
+                speed = distanceFromPrevious / (intervalSeconds / 3600.0)
+                totalDistance += distanceFromPrevious
+                if (speed < 300.0) maxSpeed = max(maxSpeed, speed)
+            }
+
+            val detectedMode = detectTransportMode(speed, current.modeOverride)
+            if (index == 0) {
+                currentMode = detectedMode
             } else {
-                i++
-            }
-        }
-    }
-
-    private fun parseGoogleTakeoutFormat(timelineObjects: JsonArray, points: MutableList<RawPoint>) {
-        for (element in timelineObjects) {
-            val obj = element.asJsonObject
-            if (obj.has("activitySegment")) {
-                val act = obj.getAsJsonObject("activitySegment")
-                val startLoc = act.getAsJsonObject("startLocation")
-                val endLoc = act.getAsJsonObject("endLocation")
-                val activityType = act.get("activityType")?.asString
-
-                val mode = when (activityType?.uppercase()) {
-                    "WALKING", "ON_FOOT" -> TransportMode.WALKING
-                    "CYCLING" -> TransportMode.CYCLING
-                    "IN_PASSENGER_VEHICLE", "DRIVING" -> TransportMode.DRIVING
-                    "IN_BUS", "IN_TRAIN", "SUBWAY" -> TransportMode.TRANSIT
-                    else -> null
-                }
-
-                val startLat = extractLat(startLoc)
-                val startLng = extractLng(startLoc)
-                val endLat = extractLat(endLoc)
-                val endLng = extractLng(endLoc)
-
-                val startTs = parseTimestamp(act.getAsJsonObject("duration")?.get("startTimestampMs")?.asString)
-                val endTs = parseTimestamp(act.getAsJsonObject("duration")?.get("endTimestampMs")?.asString)
-
-                if (startLat != 0.0 && startLng != 0.0) {
-                    points.add(RawPoint(startLat, startLng, startTs, modeOverride = mode))
-                }
-                if (endLat != 0.0 && endLng != 0.0) {
-                    points.add(RawPoint(endLat, endLng, endTs, modeOverride = mode))
-                }
-            } else if (obj.has("placeVisit")) {
-                val visit = obj.getAsJsonObject("placeVisit")
-                val loc = visit.getAsJsonObject("location")
-                val lat = extractLat(loc)
-                val lng = extractLng(loc)
-                val name = loc.get("name")?.asString ?: loc.get("address")?.asString
-                val durationObj = visit.getAsJsonObject("duration")
-                val startTs = parseTimestamp(durationObj?.get("startTimestampMs")?.asString)
-                val endTs = parseTimestamp(durationObj?.get("endTimestampMs")?.asString)
-
-                if (lat != 0.0 && lng != 0.0) {
-                    points.add(RawPoint(lat, lng, startTs, isPlaceVisit = true, placeName = name))
-                    points.add(RawPoint(lat, lng, endTs, isPlaceVisit = true, placeName = name))
+                modeDurations[detectedMode] = (modeDurations[detectedMode] ?: 0L) + intervalSeconds
+                if (detectedMode != currentMode) {
+                    addSegment(points, currentSegmentStart, index - 1, currentMode, segments)
+                    currentSegmentStart = index
+                    currentMode = detectedMode
                 }
             }
+
+            routePoints += RoutePoint(
+                journeyId = 0L,
+                latitude = current.lat,
+                longitude = current.lng,
+                timestamp = current.timestamp,
+                speedKmh = speed,
+                bearing = if (index > 0) calculateBearing(points[index - 1].lat, points[index - 1].lng, current.lat, current.lng) else 0f,
+                sequenceOrder = index
+            )
+        }
+        addSegment(points, currentSegmentStart, points.lastIndex, currentMode, segments)
+
+        val startTime = points.first().timestamp
+        val endTime = points.last().timestamp
+        val durationSeconds = ((endTime - startTime) / 1000L).coerceAtLeast(1L)
+        val dominantMode = modeDurations.maxByOrNull { it.value }?.key ?: currentMode
+        val highlight = stops.maxByOrNull { it.importanceScore * 1_000_000L + it.durationSeconds }?.name
+
+        val journey = Journey(
+            title = defaultTitle,
+            description = "Cinematic route through ${stops.size} key locations via ${dominantMode.label.lowercase()}.",
+            startTime = startTime,
+            endTime = endTime,
+            totalDistanceKm = roundToTwoDecimals(totalDistance),
+            totalDurationSeconds = durationSeconds,
+            pointCount = routePoints.size,
+            stopCount = stops.size,
+            maxSpeedKmh = roundToOneDecimal(maxSpeed),
+            averageSpeedKmh = roundToOneDecimal(totalDistance / (durationSeconds / 3600.0)),
+            dominantMode = dominantMode,
+            highlightPlaceName = highlight
+        )
+        return ParsedJourneyResult(journey, routePoints, stops, segments)
+    }
+
+    private fun addSegment(
+        points: List<RawPoint>,
+        startIndex: Int,
+        endIndex: Int,
+        mode: TransportMode,
+        output: MutableList<TransportSegment>
+    ) {
+        if (startIndex < 0 || endIndex <= startIndex || endIndex >= points.size) return
+        var distance = 0.0
+        for (index in startIndex + 1..endIndex) {
+            distance += calculateDistanceKm(points[index - 1].lat, points[index - 1].lng, points[index].lat, points[index].lng)
+        }
+        val duration = ((points[endIndex].timestamp - points[startIndex].timestamp) / 1000L).coerceAtLeast(1L)
+        output += TransportSegment(
+            journeyId = 0L,
+            startIndex = startIndex,
+            endIndex = endIndex,
+            mode = mode,
+            distanceKm = roundToTwoDecimals(distance),
+            durationSeconds = duration,
+            averageSpeedKmh = roundToOneDecimal(distance / (duration / 3600.0))
+        )
+    }
+
+    private fun LocationData.isValid(): Boolean = lat in -90.0..90.0 && lng in -180.0..180.0 && !(lat == 0.0 && lng == 0.0)
+
+    private fun JsonReader.nextNullableString(): String? = when (peek()) {
+        JsonToken.NULL -> {
+            nextNull()
+            null
+        }
+        else -> nextString()
+    }
+
+    private fun JsonReader.nextDoubleOrNull(): Double? = when (peek()) {
+        JsonToken.NULL -> {
+            nextNull()
+            null
+        }
+        JsonToken.NUMBER, JsonToken.STRING -> nextString().toDoubleOrNull()
+        else -> {
+            skipValue()
+            null
         }
     }
 
-    private fun parseGoogleLocationsFormat(locations: JsonArray, points: MutableList<RawPoint>) {
-        for (element in locations) {
-            val obj = element.asJsonObject
-            val latE7 = obj.get("latitudeE7")?.asLong ?: 0L
-            val lngE7 = obj.get("longitudeE7")?.asLong ?: 0L
-            val tsMs = obj.get("timestampMs")?.asLong ?: System.currentTimeMillis()
-
-            if (latE7 != 0L && lngE7 != 0L) {
-                points.add(RawPoint(latE7 / 1e7, lngE7 / 1e7, tsMs))
-            }
-        }
+    private fun parseTimestamp(value: String?): Long {
+        if (value.isNullOrBlank()) return 0L
+        return value.toLongOrNull() ?: runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)
     }
 
-    private fun parseGeoJsonFormat(features: JsonArray, points: MutableList<RawPoint>) {
-        var seq = 0
-        val baseTs = System.currentTimeMillis()
-        for (f in features) {
-            val geom = f.asJsonObject.getAsJsonObject("geometry") ?: continue
-            val coords = geom.getAsJsonArray("coordinates") ?: continue
-            if (coords.size() >= 2) {
-                val lng = coords[0].asDouble
-                val lat = coords[1].asDouble
-                points.add(RawPoint(lat, lng, baseTs + (seq * 10000L)))
-                seq++
-            }
-        }
-    }
-
-    private fun parsePointArray(arr: JsonArray, points: MutableList<RawPoint>) {
-        var seq = 0
-        val baseTs = System.currentTimeMillis()
-        for (e in arr) {
-            if (e.isJsonObject) {
-                val obj = e.asJsonObject
-                val lat = obj.get("lat")?.asDouble ?: obj.get("latitude")?.asDouble ?: 0.0
-                val lng = obj.get("lng")?.asDouble ?: obj.get("longitude")?.asDouble ?: 0.0
-                if (lat != 0.0 && lng != 0.0) {
-                    points.add(RawPoint(lat, lng, baseTs + (seq * 10000L)))
-                    seq++
-                }
-            }
-        }
-    }
-
-    private fun extractLat(obj: JsonObject?): Double {
-        if (obj == null) return 0.0
-        if (obj.has("latitudeE7")) return obj.get("latitudeE7").asLong / 1e7
-        if (obj.has("latitude")) return obj.get("latitude").asDouble
-        return 0.0
-    }
-
-    private fun extractLng(obj: JsonObject?): Double {
-        if (obj == null) return 0.0
-        if (obj.has("longitudeE7")) return obj.get("longitudeE7").asLong / 1e7
-        if (obj.has("longitude")) return obj.get("longitude").asDouble
-        return 0.0
-    }
-
-    private fun parseTimestamp(str: String?): Long {
-        if (str == null) return System.currentTimeMillis()
-        return try {
-            str.toLong()
-        } catch (e: Exception) {
-            System.currentTimeMillis()
-        }
+    private fun transportModeFor(activityType: String?): TransportMode? = when (activityType?.uppercase()) {
+        "WALKING", "ON_FOOT", "RUNNING" -> TransportMode.WALKING
+        "CYCLING" -> TransportMode.CYCLING
+        "IN_PASSENGER_VEHICLE", "DRIVING", "MOTORCYCLING" -> TransportMode.DRIVING
+        "IN_BUS", "IN_TRAIN", "SUBWAY", "TRAM", "FLYING" -> TransportMode.TRANSIT
+        else -> null
     }
 
     private fun detectTransportMode(speedKmh: Double, override: TransportMode?): TransportMode {
@@ -421,24 +732,42 @@ object TimelineParser {
         }
     }
 
+    private fun perpendicularDistanceKm(point: RawPoint, lineStart: RawPoint, lineEnd: RawPoint): Double {
+        val referenceLatitude = Math.toRadians((lineStart.lat + lineEnd.lat + point.lat) / 3.0)
+        val x1 = lineStart.lng * 111.320 * cos(referenceLatitude)
+        val y1 = lineStart.lat * 110.574
+        val x2 = lineEnd.lng * 111.320 * cos(referenceLatitude)
+        val y2 = lineEnd.lat * 110.574
+        val x = point.lng * 111.320 * cos(referenceLatitude)
+        val y = point.lat * 110.574
+        val dx = x2 - x1
+        val dy = y2 - y1
+        if (dx == 0.0 && dy == 0.0) return sqrt((x - x1) * (x - x1) + (y - y1) * (y - y1))
+        val projection = ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)
+        val boundedProjection = min(1.0, max(0.0, projection))
+        val closestX = x1 + boundedProjection * dx
+        val closestY = y1 + boundedProjection * dy
+        return sqrt((x - closestX) * (x - closestX) + (y - closestY) * (y - closestY))
+    }
+
     private fun calculateDistanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val r = 6371.0
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lon2 - lon1)
-        val a = sin(dLat / 2) * sin(dLat / 2) +
-                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                sin(dLon / 2) * sin(dLon / 2)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return r * c
+        val radius = 6371.0
+        val deltaLat = Math.toRadians(lat2 - lat1)
+        val deltaLon = Math.toRadians(lon2 - lon1)
+        val a = sin(deltaLat / 2) * sin(deltaLat / 2) +
+            cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(deltaLon / 2) * sin(deltaLon / 2)
+        return radius * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
     private fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Float {
-        val dLon = Math.toRadians(lon2 - lon1)
+        val deltaLon = Math.toRadians(lon2 - lon1)
         val lat1Rad = Math.toRadians(lat1)
         val lat2Rad = Math.toRadians(lat2)
-        val y = sin(dLon) * cos(lat2Rad)
-        val x = cos(lat1Rad) * sin(lat2Rad) - sin(lat1Rad) * cos(lat2Rad) * cos(dLon)
-        val brng = Math.toDegrees(atan2(y, x))
-        return ((brng + 360) % 360).toFloat()
+        val y = sin(deltaLon) * cos(lat2Rad)
+        val x = cos(lat1Rad) * sin(lat2Rad) - sin(lat1Rad) * cos(lat2Rad) * cos(deltaLon)
+        return ((Math.toDegrees(atan2(y, x)) + 360) % 360).toFloat()
     }
+
+    private fun roundToTwoDecimals(value: Double): Double = (value * 100).roundToInt() / 100.0
+    private fun roundToOneDecimal(value: Double): Double = (value * 10).roundToInt() / 10.0
 }

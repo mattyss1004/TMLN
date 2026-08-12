@@ -1,6 +1,7 @@
 package com.example.timelineviewer.ui.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.timelineviewer.data.local.AppDatabase
@@ -9,6 +10,7 @@ import com.example.timelineviewer.data.model.JourneyDetailData
 import com.example.timelineviewer.data.repository.JourneyRepository
 import com.example.timelineviewer.data.seed.SampleDataSeeder
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -178,6 +181,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun importTimelineJson(jsonString: String, title: String): Boolean {
         return repository.importTimelineJson(jsonString, title)
+    }
+
+    /** Opens a JSON/GeoJSON document as a stream so imports do not duplicate a large file in UI memory. */
+    suspend fun importTimelineDocument(uri: Uri, title: String): Boolean = withContext(Dispatchers.IO) {
+        application.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+            repository.importTimelineReader(reader, title)
+        } ?: false
     }
 
     suspend fun addCustomJourney(

@@ -1,6 +1,7 @@
 package com.example.timelineviewer
 
 import android.os.Bundle
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
                             onDeleteJourney = { viewModel.deleteJourney(it) },
                             onJourneyClick = { viewModel.loadJourneyDetail(it) },
                             onImportJson = { json, title -> viewModel.importTimelineJson(json, title) },
+                            onImportDocument = { uri: Uri, title -> viewModel.importTimelineDocument(uri, title) },
                             onAddCustomJourney = { title, desc, sLat, sLng, eLat, eLng, stops ->
                                 viewModel.addCustomJourney(title, desc, sLat, sLng, eLat, eLng, stops)
                             }

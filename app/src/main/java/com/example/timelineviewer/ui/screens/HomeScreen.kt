@@ -1,5 +1,6 @@
 package com.example.timelineviewer.ui.screens
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -44,6 +45,7 @@ fun HomeScreen(
     onDeleteJourney: (Long) -> Unit,
     onJourneyClick: (Long) -> Unit,
     onImportJson: suspend (String, String) -> Boolean,
+    onImportDocument: suspend (Uri, String) -> Boolean,
     onAddCustomJourney: suspend (String, String, Double, Double, Double, Double, List<String>) -> Long,
     modifier: Modifier = Modifier
 ) {
@@ -201,6 +203,7 @@ fun HomeScreen(
         TimelineImportDialog(
             onDismiss = { showImportDialog = false },
             onImportJson = onImportJson,
+            onImportDocument = onImportDocument,
             onAddCustomJourney = onAddCustomJourney
         )
     }

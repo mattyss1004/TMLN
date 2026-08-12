@@ -6,8 +6,12 @@ import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
 import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
+import com.example.timelineviewer.data.parser.ParsedJourneyResult
 import com.example.timelineviewer.data.parser.TimelineParser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
+import java.io.Reader
 
 class JourneyRepository(private val database: AppDatabase) {
 
@@ -37,20 +41,32 @@ class JourneyRepository(private val database: AppDatabase) {
         database.journeyDao().deleteAllJourneys()
     }
 
-    /**
-     * Parse first, then persist the complete journey atomically. If any insertion fails, Room
-     * rolls back the parent record and all children instead of leaving a partial import behind.
-     */
+    /** Parses pasted text on a background dispatcher, then writes the full journey atomically. */
     suspend fun importTimelineJson(jsonString: String, title: String): Boolean {
-        val parsed = TimelineParser.parseTimelineJson(jsonString, title) ?: return false
-
-        database.withTransaction {
-            val journeyId = database.journeyDao().insertJourney(parsed.journey)
-            database.routePointDao().insertPoints(parsed.points.map { it.copy(journeyId = journeyId) })
-            database.stopDao().insertStops(parsed.stops.map { it.copy(journeyId = journeyId) })
-            database.transportSegmentDao().insertSegments(parsed.segments.map { it.copy(journeyId = journeyId) })
-        }
+        val parsed = withContext(Dispatchers.Default) {
+            TimelineParser.parseTimelineJson(jsonString, title)
+        } ?: return false
+        persistParsedJourney(parsed)
         return true
+    }
+
+    /**
+     * Parses a file stream without first loading a Takeout/GeoJSON document into an in-memory
+     * String. The caller owns and closes the reader after this operation returns.
+     */
+    suspend fun importTimelineReader(reader: Reader, title: String): Boolean {
+        val parsed = withContext(Dispatchers.Default) {
+            TimelineParser.parseTimeline(reader, title)
+        } ?: return false
+        persistParsedJourney(parsed)
+        return true
+    }
+
+    private suspend fun persistParsedJourney(parsed: ParsedJourneyResult) = database.withTransaction {
+        val journeyId = database.journeyDao().insertJourney(parsed.journey)
+        database.routePointDao().insertPoints(parsed.points.map { it.copy(journeyId = journeyId) })
+        database.stopDao().insertStops(parsed.stops.map { it.copy(journeyId = journeyId) })
+        database.transportSegmentDao().insertSegments(parsed.segments.map { it.copy(journeyId = journeyId) })
     }
 
     suspend fun addCustomJourney(
@@ -70,35 +86,29 @@ class JourneyRepository(private val database: AppDatabase) {
 
         val numSteps = 20
         for (i in 0..numSteps) {
-            val frac = i.toDouble() / numSteps
-            val lat = startLat + (endLat - startLat) * frac
-            val lng = startLng + (endLng - startLng) * frac
-            points.add(
-                RoutePoint(
-                    journeyId = 0L,
-                    latitude = lat,
-                    longitude = lng,
-                    timestamp = startTime + (i * 300000L),
-                    speedKmh = 25.0,
-                    bearing = 45f,
-                    sequenceOrder = i
-                )
+            val fraction = i.toDouble() / numSteps
+            points += RoutePoint(
+                journeyId = 0L,
+                latitude = startLat + (endLat - startLat) * fraction,
+                longitude = startLng + (endLng - startLng) * fraction,
+                timestamp = startTime + (i * 300000L),
+                speedKmh = 25.0,
+                bearing = 45f,
+                sequenceOrder = i
             )
         }
 
         stopNames.forEachIndexed { index, name ->
             val fraction = (index + 1).toDouble() / (stopNames.size + 1)
-            stops.add(
-                Stop(
-                    journeyId = 0L,
-                    latitude = startLat + (endLat - startLat) * fraction,
-                    longitude = startLng + (endLng - startLng) * fraction,
-                    name = name,
-                    startTime = startTime + (index * 1200000L),
-                    endTime = startTime + (index * 1200000L) + 600000L,
-                    durationSeconds = 600L,
-                    sequenceOrder = index
-                )
+            stops += Stop(
+                journeyId = 0L,
+                latitude = startLat + (endLat - startLat) * fraction,
+                longitude = startLng + (endLng - startLng) * fraction,
+                name = name,
+                startTime = startTime + (index * 1200000L),
+                endTime = startTime + (index * 1200000L) + 600000L,
+                durationSeconds = 600L,
+                sequenceOrder = index
             )
         }
 
