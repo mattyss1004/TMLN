@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Theme for Light mode -->
-    <style name="Theme.TimelineViewer" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.TimelineViewer" parent="android:style/Theme.Material.Light.NoActionBar">
         <!-- Primary branding color -->
         <item name="colorPrimary">@color/primary_blue</item>
         <item name="android:statusBarColor">?attr/colorPrimary</item>
