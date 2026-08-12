@@ -25,10 +25,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val repository: JourneyRepository
-    private val offlineMapPackManager by lazy { OfflineMapPackManager(application) }
+    private val offlineMapPackManager by lazy { OfflineMapPackManager(app) }
 
     val selectedJourneyIds = MutableStateFlow<Set<Long>>(emptySet())
     val searchQuery = MutableStateFlow("")
@@ -49,7 +49,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val journeys: StateFlow<List<Journey>>
 
     init {
-        val db = AppDatabase.getDatabase(application)
+        val db = AppDatabase.getDatabase(app)
         repository = JourneyRepository(db)
 
         viewModelScope.launch {
@@ -225,7 +225,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Opens a JSON/GeoJSON document as a stream so imports do not duplicate a large file in UI memory. */
     suspend fun importTimelineDocument(uri: Uri, title: String): Boolean = withContext(Dispatchers.IO) {
-        application.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+        app.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
             repository.importTimelineReader(reader, title)
         } ?: false
     }

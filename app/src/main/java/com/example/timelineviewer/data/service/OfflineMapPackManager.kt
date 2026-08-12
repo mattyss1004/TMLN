@@ -61,8 +61,8 @@ class OfflineMapPackManager(context: Context) {
                 TilesetDescriptorOptions.Builder()
                     .styleURI(styleUri)
                     .pixelRatio(pixelRatio)
-                    .minZoom(MIN_ZOOM)
-                    .maxZoom(MAX_ZOOM)
+                    .minZoom(MIN_ZOOM.toByte())
+                    .maxZoom(MAX_ZOOM.toByte())
                     .build()
             )
         }

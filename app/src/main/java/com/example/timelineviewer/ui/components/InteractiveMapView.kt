@@ -175,12 +175,12 @@ fun InteractiveMapView(
             onToggleStops = onToggleStops,
             onZoomIn = {
                 mapViewportState.easeTo(
-                    cameraOptions { zoom((mapViewportState.cameraState.zoom + 1.0).coerceAtMost(20.0)) }
+                    cameraOptions { zoom(((mapViewportState.cameraState?.zoom ?: overviewZoom) + 1.0).coerceAtMost(20.0)) }
                 )
             },
             onZoomOut = {
                 mapViewportState.easeTo(
-                    cameraOptions { zoom((mapViewportState.cameraState.zoom - 1.0).coerceAtLeast(1.0)) }
+                    cameraOptions { zoom(((mapViewportState.cameraState?.zoom ?: overviewZoom) - 1.0).coerceAtLeast(1.0)) }
                 )
             },
             onOverview = {

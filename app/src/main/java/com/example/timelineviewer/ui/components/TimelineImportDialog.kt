@@ -249,7 +249,7 @@ fun TimelineImportDialog(
 }
 
 @Composable
-private fun PresetJourneyButton(
+private fun RowScope.PresetJourneyButton(
     label: String,
     testTag: String,
     enabled: Boolean,
