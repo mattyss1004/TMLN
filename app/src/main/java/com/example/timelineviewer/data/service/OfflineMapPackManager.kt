@@ -28,7 +28,7 @@ class OfflineMapPackManager(context: Context) {
 
     companion object {
         const val MIN_ZOOM = 6
-        const val MAX_ZOOM = 15
+        const val MAX_ZOOM = 16
         private const val REGION_VERSION = 1
 
         fun regionIdFor(journeyId: Long): String = "tmln-journey-$journeyId-v$REGION_VERSION"
