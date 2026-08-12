@@ -103,8 +103,8 @@ fun JourneyDetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(if (isFullscreen) 1f else 0.54f)
-                    .padding(if (isFullscreen) 0.dp else 12.dp)
+                    .weight(if (isFullscreen) 1f else 0.60f)
+                    .padding(if (isFullscreen) 0.dp else 10.dp)
             ) {
                 InteractiveMapView(
                     points = detail.points,
@@ -124,9 +124,10 @@ fun JourneyDetailScreen(
                 )
 
                 TransportLegend(
+                    modes = detail.segments.map { it.mode },
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(12.dp)
+                        .padding(10.dp)
                 )
             }
 
@@ -134,9 +135,9 @@ fun JourneyDetailScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.46f),
+                        .weight(0.40f),
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     item {
                         PlaybackControls(

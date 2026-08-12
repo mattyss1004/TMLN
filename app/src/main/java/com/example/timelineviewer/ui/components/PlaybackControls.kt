@@ -51,14 +51,14 @@ fun PlaybackControls(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
-        shadowElevation = 8.dp
+        tonalElevation = 2.dp,
+        shadowElevation = 4.dp
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             PlaybackHeader(
                 isPlaying = isPlaying,
@@ -100,7 +100,7 @@ fun PlaybackControls(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier
-                        .size(58.dp)
+                        .size(54.dp)
                         .testTag("play_pause_button")
                 ) {
                     AnimatedContent(
@@ -111,7 +111,7 @@ fun PlaybackControls(
                         Icon(
                             imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (playing) "Pause" else "Play",
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
@@ -256,7 +256,7 @@ private fun PlaybackIconButton(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         modifier = Modifier
-            .size(42.dp)
+            .size(38.dp)
             .testTag(testTag)
     ) {
         Box(contentAlignment = Alignment.Center) {

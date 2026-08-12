@@ -15,27 +15,33 @@ import com.example.timelineviewer.data.model.TransportMode
 
 @Composable
 fun TransportLegend(
+    modes: Collection<TransportMode>,
     modifier: Modifier = Modifier
 ) {
+    val visibleModes = modes
+        .filter { it != TransportMode.UNKNOWN }
+        .distinct()
+        .ifEmpty { listOf(TransportMode.UNKNOWN) }
+
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
-        tonalElevation = 2.dp
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        shadowElevation = 4.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TransportMode.entries.forEach { mode ->
+            visibleModes.forEach { mode ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
                             .background(Color(mode.hexColor))
                     )

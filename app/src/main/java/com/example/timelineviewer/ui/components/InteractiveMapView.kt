@@ -93,8 +93,8 @@ fun InteractiveMapView(
             mapViewportState.setCameraOptions(
                 cameraOptions {
                     center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                    zoom(16.2)
-                    pitch(64.0)
+                    zoom(15.8)
+                    pitch(58.0)
                     bearing(activePoint.bearing.toDouble())
                 }
             )
@@ -104,7 +104,7 @@ fun InteractiveMapView(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(24.dp))
     ) {
         MapboxMap(
             modifier = Modifier.fillMaxSize(),
@@ -114,10 +114,10 @@ fun InteractiveMapView(
                     MapboxStandardSatelliteStyle(
                         standardSatelliteStyleState = rememberStandardSatelliteStyleState {
                             configurationsState.apply {
-                                lightPreset = LightPresetValue.DUSK
-                                showPlaceLabels = BooleanValue(true)
+                                lightPreset = LightPresetValue.DAY
+                                showPlaceLabels = BooleanValue(false)
                                 showRoadLabels = BooleanValue(true)
-                                showPointOfInterestLabels = BooleanValue(true)
+                                showPointOfInterestLabels = BooleanValue(false)
                             }
                         }
                     )
@@ -128,10 +128,10 @@ fun InteractiveMapView(
                                 // Standard supports 3D building geometry, enhanced by the pitched
                                 // camera used for overview, follow, and orbit modes.
                                 show3dObjects = BooleanValue(true)
-                                lightPreset = LightPresetValue.DUSK
-                                showPlaceLabels = BooleanValue(true)
+                                lightPreset = LightPresetValue.DAY
+                                showPlaceLabels = BooleanValue(false)
                                 showRoadLabels = BooleanValue(true)
-                                showPointOfInterestLabels = BooleanValue(true)
+                                showPointOfInterestLabels = BooleanValue(false)
                             }
                         }
                     )
@@ -153,11 +153,11 @@ fun InteractiveMapView(
             // over satellite imagery, dark map styling, and dense streets.
             val traveller = Point.fromLngLat(activePoint.longitude, activePoint.latitude)
             CircleAnnotation(point = traveller) {
-                circleRadius = 15.0
+                circleRadius = 12.0
                 circleColor = Color(0x55F59E0B)
             }
             CircleAnnotation(point = traveller) {
-                circleRadius = 8.0
+                circleRadius = 6.5
                 circleColor = Color(0xFFF59E0B)
             }
             CircleAnnotation(point = traveller) {
@@ -173,16 +173,6 @@ fun InteractiveMapView(
             isExpanded = isExpanded,
             onMapStyleToggle = onMapStyleToggle,
             onToggleStops = onToggleStops,
-            onZoomIn = {
-                mapViewportState.easeTo(
-                    cameraOptions { zoom(((mapViewportState.cameraState?.zoom ?: overviewZoom) + 1.0).coerceAtMost(20.0)) }
-                )
-            },
-            onZoomOut = {
-                mapViewportState.easeTo(
-                    cameraOptions { zoom(((mapViewportState.cameraState?.zoom ?: overviewZoom) - 1.0).coerceAtLeast(1.0)) }
-                )
-            },
             onOverview = {
                 cameraMode = CameraMode.OVERVIEW
                 mapViewportState.easeTo(
@@ -199,8 +189,8 @@ fun InteractiveMapView(
                 mapViewportState.easeTo(
                     cameraOptions {
                         center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                        zoom(16.2)
-                        pitch(64.0)
+                    zoom(15.8)
+                    pitch(58.0)
                         bearing(activePoint.bearing.toDouble())
                     }
                 )
@@ -210,8 +200,8 @@ fun InteractiveMapView(
                 mapViewportState.easeTo(
                     cameraOptions {
                         center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                        zoom(15.4)
-                        pitch(70.0)
+                        zoom(15.0)
+                        pitch(58.0)
                         bearing((activePoint.bearing + 55f).toDouble())
                     }
                 )
@@ -314,18 +304,22 @@ private fun MapControlStack(
     isExpanded: Boolean,
     onMapStyleToggle: () -> Unit,
     onToggleStops: () -> Unit,
-    onZoomIn: () -> Unit,
-    onZoomOut: () -> Unit,
     onOverview: () -> Unit,
     onFollow: () -> Unit,
     onOrbit: () -> Unit,
     onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    Surface(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+        shadowElevation = 6.dp
     ) {
+        Column(
+            modifier = Modifier.padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
         MapControlButton(
             icon = if (mapStyle == MapStyle.CINEMATIC) Icons.Default.SatelliteAlt else Icons.Default.Map,
             contentDescription = "Toggle Map Style",
@@ -337,18 +331,6 @@ private fun MapControlStack(
             contentDescription = "Toggle Stops",
             onClick = onToggleStops,
             testTag = "toggle_stops"
-        )
-        MapControlButton(
-            icon = Icons.Default.Add,
-            contentDescription = "Zoom In",
-            onClick = onZoomIn,
-            testTag = "zoom_in"
-        )
-        MapControlButton(
-            icon = Icons.Default.Remove,
-            contentDescription = "Zoom Out",
-            onClick = onZoomOut,
-            testTag = "zoom_out"
         )
         MapControlButton(
             icon = Icons.Default.Map,
@@ -377,6 +359,7 @@ private fun MapControlStack(
             onClick = onToggleFullscreen,
             testTag = "toggle_fullscreen"
         )
+        }
     }
 }
 
@@ -412,12 +395,12 @@ private fun ActiveLocationBadge(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "${String.format("%.4f", activePoint.latitude)}, ${String.format("%.4f", activePoint.longitude)}",
+                    text = "Live location · point ${currentPointIndex + 1} of $pointCount",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "${String.format("%.1f", activePoint.speedKmh)} km/h · ${currentPointIndex + 1}/$pointCount",
+                    text = "${String.format("%.1f", activePoint.speedKmh)} km/h",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -501,14 +484,14 @@ private fun MapControlButton(
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         shadowElevation = 4.dp,
         modifier = Modifier
-            .size(40.dp)
+            .size(36.dp)
             .testTag(testTag)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
                 tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             )
         }
