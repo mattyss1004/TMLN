@@ -24,6 +24,10 @@ data class Journey(
     val totalDurationSeconds: Long,
     val pointCount: Int,
     val stopCount: Int,
+    val maxSpeedKmh: Double = 0.0,
+    val averageSpeedKmh: Double = 0.0,
+    val dominantMode: TransportMode = TransportMode.UNKNOWN,
+    val highlightPlaceName: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -51,7 +55,9 @@ data class Stop(
     val startTime: Long,
     val endTime: Long,
     val durationSeconds: Long,
-    val sequenceOrder: Int
+    val sequenceOrder: Int,
+    val importanceScore: Int = 0, // 0-100 based on dwell time and metadata
+    val category: String = "Waypoint" // e.g., "Sightseeing", "Rest", "Transit Hub"
 )
 
 @Serializable

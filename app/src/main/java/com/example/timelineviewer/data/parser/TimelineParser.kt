@@ -8,10 +8,7 @@ import com.example.timelineviewer.data.model.TransportSegment
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
+import kotlin.math.*
 
 data class ParsedJourneyResult(
     val journey: Journey,
@@ -22,66 +19,79 @@ data class ParsedJourneyResult(
 
 object TimelineParser {
 
+    /**
+     * Enhanced parser with dwell-time stop detection and Douglas-Peucker smoothing.
+     */
     fun parseTimelineJson(jsonString: String, defaultTitle: String = "Imported Timeline Journey"): ParsedJourneyResult? {
         return try {
             val jsonElement = JsonParser.parseString(jsonString)
             val rawPoints = mutableListOf<RawPoint>()
 
-            if (jsonElement.isJsonObject) {
-                val root = jsonElement.asJsonObject
-                if (root.has("timelineObjects")) {
-                    parseGoogleTakeoutFormat(root.getAsJsonArray("timelineObjects"), rawPoints)
-                } else if (root.has("locations")) {
-                    parseGoogleLocationsFormat(root.getAsJsonArray("locations"), rawPoints)
-                } else if (root.has("features")) {
-                    parseGeoJsonFormat(root.getAsJsonArray("features"), rawPoints)
+            // 1. Ingestion Phase
+            when {
+                jsonElement.isJsonObject -> {
+                    val root = jsonElement.asJsonObject
+                    when {
+                        root.has("timelineObjects") -> parseGoogleTakeoutFormat(root.getAsJsonArray("timelineObjects"), rawPoints)
+                        root.has("locations") -> parseGoogleLocationsFormat(root.getAsJsonArray("locations"), rawPoints)
+                        root.has("features") -> parseGeoJsonFormat(root.getAsJsonArray("features"), rawPoints)
+                    }
                 }
-            } else if (jsonElement.isJsonArray) {
-                parsePointArray(jsonElement.asJsonArray, rawPoints)
+                jsonElement.isJsonArray -> parsePointArray(jsonElement.asJsonArray, rawPoints)
             }
 
             if (rawPoints.isEmpty()) return null
 
-            // Sort points by timestamp
+            // 2. Pre-processing: Sort and Clean
             rawPoints.sortBy { it.timestamp }
+            val cleanedPoints = removeJitter(rawPoints)
 
-            val startTime = rawPoints.first().timestamp
-            val endTime = rawPoints.last().timestamp
-            val durationSec = ((endTime - startTime) / 1000L).coerceAtLeast(10L)
+            // 3. Douglas-Peucker Smoothing (Epsilon ~ 5 meters)
+            val smoothedPoints = simplifyPoints(cleanedPoints, 0.00005)
 
+            // 4. Analysis Phase
             val routePoints = mutableListOf<RoutePoint>()
             val stops = mutableListOf<Stop>()
             val segments = mutableListOf<TransportSegment>()
 
             var totalDistKm = 0.0
+            var maxSpeed = 0.0
             var currentSegmentStart = 0
             var currentMode = TransportMode.UNKNOWN
+            val modeDurationMap = mutableMapOf<TransportMode, Long>()
 
-            for (i in 0 until rawPoints.size) {
-                val pt = rawPoints[i]
+            for (i in smoothedPoints.indices) {
+                val pt = smoothedPoints[i]
                 var speed = 0.0
                 var distFromPrev = 0.0
 
                 if (i > 0) {
-                    val prev = rawPoints[i - 1]
+                    val prev = smoothedPoints[i - 1]
                     distFromPrev = calculateDistanceKm(prev.lat, prev.lng, pt.lat, pt.lng)
                     totalDistKm += distFromPrev
 
                     val timeDiffSec = ((pt.timestamp - prev.timestamp) / 1000.0).coerceAtLeast(0.1)
                     speed = (distFromPrev / timeDiffSec) * 3600.0 // km/h
+                    if (speed > maxSpeed && speed < 300.0) maxSpeed = speed // Ignore supersonic GPS spikes
                 }
 
                 val detectedMode = detectTransportMode(speed, pt.modeOverride)
 
+                // Track dominant mode duration
+                if (i > 0) {
+                    val duration = (pt.timestamp - smoothedPoints[i-1].timestamp) / 1000L
+                    modeDurationMap[detectedMode] = (modeDurationMap[detectedMode] ?: 0L) + duration
+                }
+
                 // Detect segment change
-                if (i > 0 && (detectedMode != currentMode || i == rawPoints.size - 1)) {
+                if (i > 0 && (detectedMode != currentMode || i == smoothedPoints.size - 1)) {
                     val segmentDist = calculateDistanceKm(
-                        rawPoints[currentSegmentStart].lat,
-                        rawPoints[currentSegmentStart].lng,
+                        smoothedPoints[currentSegmentStart].lat,
+                        smoothedPoints[currentSegmentStart].lng,
                         pt.lat,
                         pt.lng
                     )
-                    val segmentDuration = ((pt.timestamp - rawPoints[currentSegmentStart].timestamp) / 1000L).coerceAtLeast(1L)
+                    val segmentDuration = ((pt.timestamp - smoothedPoints[currentSegmentStart].timestamp) / 1000L).coerceAtLeast(1L)
 
                     segments.add(
                         TransportSegment(
@@ -89,7 +99,7 @@ object TimelineParser {
                             startIndex = currentSegmentStart,
                             endIndex = i,
                             mode = currentMode,
-                            distanceKm = (segmentDist * 100).toInt() / 100.0,
+                            distanceKm = (segmentDist * 100).roundToInt() / 100.0,
                             durationSeconds = segmentDuration,
                             averageSpeedKmh = if (segmentDuration > 0) (segmentDist / (segmentDuration / 3600.0)) else 0.0
                         )
@@ -101,7 +111,7 @@ object TimelineParser {
                 }
 
                 val bearing = if (i > 0) {
-                    calculateBearing(rawPoints[i - 1].lat, rawPoints[i - 1].lng, pt.lat, pt.lng)
+                    calculateBearing(smoothedPoints[i - 1].lat, smoothedPoints[i - 1].lng, pt.lat, pt.lng)
                 } else 0f
 
                 routePoints.add(
@@ -115,33 +125,31 @@ object TimelineParser {
                         sequenceOrder = i
                     )
                 )
-
-                // Detect stop if velocity is zero/low or marked as place visit
-                if (pt.isPlaceVisit || (i > 0 && distFromPrev < 0.02 && speed < 1.0 && i % 10 == 0)) {
-                    stops.add(
-                        Stop(
-                            journeyId = 0L,
-                            latitude = pt.lat,
-                            longitude = pt.lng,
-                            name = pt.placeName ?: "Waypoint Stop #${stops.size + 1}",
-                            startTime = pt.timestamp - 300000L,
-                            endTime = pt.timestamp,
-                            durationSeconds = 300L,
-                            sequenceOrder = stops.size
-                        )
-                    )
-                }
             }
+
+            // 5. Dwell-Time Stop Detection
+            detectDwellStops(smoothedPoints, stops)
+
+            // 6. Final Metadata Assembly
+            val startTime = smoothedPoints.first().timestamp
+            val endTime = smoothedPoints.last().timestamp
+            val durationSec = ((endTime - startTime) / 1000L).coerceAtLeast(1L)
+            val dominantMode = modeDurationMap.maxByOrNull { it.value }?.key ?: TransportMode.UNKNOWN
+            val highlightStop = stops.maxByOrNull { it.durationSeconds }?.name
 
             val journey = Journey(
                 title = defaultTitle,
-                description = "Parsed timeline containing ${routePoints.size} GPS track points",
+                description = "Cinematic route through ${stops.size} key locations via ${dominantMode.label.lowercase()}.",
                 startTime = startTime,
                 endTime = endTime,
-                totalDistanceKm = (totalDistKm * 100).toInt() / 100.0,
+                totalDistanceKm = (totalDistKm * 100).roundToInt() / 100.0,
                 totalDurationSeconds = durationSec,
                 pointCount = routePoints.size,
-                stopCount = stops.size
+                stopCount = stops.size,
+                maxSpeedKmh = (maxSpeed * 10).roundToInt() / 10.0,
+                averageSpeedKmh = if (durationSec > 0) ((totalDistKm / (durationSec / 3600.0)) * 10).roundToInt() / 10.0 else 0.0,
+                dominantMode = dominantMode,
+                highlightPlaceName = highlightStop
             )
 
             ParsedJourneyResult(journey, routePoints, stops, segments)
@@ -159,6 +167,132 @@ object TimelineParser {
         val placeName: String? = null,
         val modeOverride: TransportMode? = null
     )
+
+    private fun removeJitter(points: List<RawPoint>): List<RawPoint> {
+        if (points.size < 3) return points
+        val result = mutableListOf<RawPoint>()
+        result.add(points.first())
+
+        for (i in 1 until points.size - 1) {
+            val prev = points[i - 1]
+            val curr = points[i]
+            val next = points[i + 1]
+
+            val distPrev = calculateDistanceKm(prev.lat, prev.lng, curr.lat, curr.lng)
+            val distNext = calculateDistanceKm(curr.lat, curr.lng, next.lat, next.lng)
+
+            // If it's a sudden spike (> 500m) that returns immediately, filter it
+            if (distPrev > 0.5 && distNext > 0.5 && calculateDistanceKm(prev.lat, prev.lng, next.lat, next.lng) < 0.1) {
+                continue
+            }
+            result.add(curr)
+        }
+        result.add(points.last())
+        return result
+    }
+
+    private fun simplifyPoints(points: List<RawPoint>, epsilon: Double): List<RawPoint> {
+        if (points.size < 3) return points
+
+        var dmax = 0.0
+        var index = 0
+        val end = points.size - 1
+
+        for (i in 1 until end) {
+            val d = perpendicularDistance(points[i], points[0], points[end])
+            if (d > dmax) {
+                index = i
+                dmax = d
+            }
+        }
+
+        return if (dmax > epsilon) {
+            val recResults1 = simplifyPoints(points.subList(0, index + 1), epsilon)
+            val recResults2 = simplifyPoints(points.subList(index, points.size), epsilon)
+            recResults1.dropLast(1) + recResults2
+        } else {
+            listOf(points.first(), points.last())
+        }
+    }
+
+    private fun perpendicularDistance(pt: RawPoint, lineStart: RawPoint, lineEnd: RawPoint): Double {
+        val dx = lineEnd.lng - lineStart.lng
+        val dy = lineEnd.lat - lineStart.lat
+
+        val mag = sqrt(dx * dx + dy * dy)
+        if (mag == 0.0) return calculateDistanceKm(pt.lat, pt.lng, lineStart.lat, lineStart.lng)
+
+        val u = ((pt.lng - lineStart.lng) * dx + (pt.lat - lineStart.lat) * dy) / (mag * mag)
+        val pLat: Double
+        val pLng: Double
+
+        if (u < 0) {
+            pLat = lineStart.lat
+            pLng = lineStart.lng
+        } else if (u > 1) {
+            pLat = lineEnd.lat
+            pLng = lineEnd.lng
+        } else {
+            pLat = lineStart.lat + u * dy
+            pLng = lineStart.lng + u * dx
+        }
+
+        return sqrt((pt.lat - pLat).pow(2) + (pt.lng - pLng).pow(2))
+    }
+
+    private fun detectDwellStops(points: List<RawPoint>, stops: MutableList<Stop>) {
+        var i = 0
+        val minDwellMs = 180000L // 3 minutes
+
+        while (i < points.size) {
+            var j = i + 1
+            var clusterLat = points[i].lat
+            var clusterLng = points[i].lng
+            var count = 1
+
+            while (j < points.size) {
+                val dist = calculateDistanceKm(points[i].lat, points[i].lng, points[j].lat, points[j].lng)
+                if (dist < 0.05) { // 50 meters radius
+                    clusterLat += points[j].lat
+                    clusterLng += points[j].lng
+                    count++
+                    j++
+                } else {
+                    break
+                }
+            }
+
+            val duration = points[j - 1].timestamp - points[i].timestamp
+            if (duration >= minDwellMs || points[i].isPlaceVisit) {
+                val avgLat = clusterLat / count
+                val avgLng = clusterLng / count
+                val name = points[i].placeName ?: "Spot #${stops.size + 1}"
+
+                val score = when {
+                    duration > 3600000L -> 90 // 1 hour+
+                    duration > 1800000L -> 70 // 30 mins+
+                    points[i].isPlaceVisit -> 85
+                    else -> 40
+                }
+
+                stops.add(Stop(
+                    journeyId = 0L,
+                    latitude = avgLat,
+                    longitude = avgLng,
+                    name = name,
+                    startTime = points[i].timestamp,
+                    endTime = points[j - 1].timestamp,
+                    durationSeconds = duration / 1000L,
+                    sequenceOrder = stops.size,
+                    importanceScore = score,
+                    category = if (score > 80) "Highlight" else "Waypoint"
+                ))
+                i = j
+            } else {
+                i++
+            }
+        }
+    }
 
     private fun parseGoogleTakeoutFormat(timelineObjects: JsonArray, points: MutableList<RawPoint>) {
         for (element in timelineObjects) {
@@ -197,10 +331,13 @@ object TimelineParser {
                 val lat = extractLat(loc)
                 val lng = extractLng(loc)
                 val name = loc.get("name")?.asString ?: loc.get("address")?.asString
-                val ts = parseTimestamp(visit.getAsJsonObject("duration")?.get("startTimestampMs")?.asString)
+                val durationObj = visit.getAsJsonObject("duration")
+                val startTs = parseTimestamp(durationObj?.get("startTimestampMs")?.asString)
+                val endTs = parseTimestamp(durationObj?.get("endTimestampMs")?.asString)
 
                 if (lat != 0.0 && lng != 0.0) {
-                    points.add(RawPoint(lat, lng, ts, isPlaceVisit = true, placeName = name))
+                    points.add(RawPoint(lat, lng, startTs, isPlaceVisit = true, placeName = name))
+                    points.add(RawPoint(lat, lng, endTs, isPlaceVisit = true, placeName = name))
                 }
             }
         }
@@ -276,7 +413,7 @@ object TimelineParser {
     private fun detectTransportMode(speedKmh: Double, override: TransportMode?): TransportMode {
         if (override != null) return override
         return when {
-            speedKmh <= 0.0 -> TransportMode.UNKNOWN
+            speedKmh <= 0.5 -> TransportMode.UNKNOWN
             speedKmh < 7.0 -> TransportMode.WALKING
             speedKmh < 30.0 -> TransportMode.CYCLING
             speedKmh < 65.0 -> TransportMode.TRANSIT

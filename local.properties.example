@@ -1,0 +1,8 @@
+# Copy this file to local.properties and insert tokens from your Mapbox account.
+# local.properties is ignored by Git and must never be committed.
+
+# Public token (starts with pk.) used by the Android app at runtime.
+MAPBOX_ACCESS_TOKEN=pk.YOUR_PUBLIC_TOKEN
+
+# Secret token (starts with sk.) with the DOWNLOADS:READ scope, used only by Gradle.
+MAPBOX_DOWNLOADS_TOKEN=sk.YOUR_DOWNLOADS_TOKEN

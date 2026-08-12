@@ -12,7 +12,7 @@ import com.example.timelineviewer.data.model.TransportSegment
 
 @Database(
     entities = [Journey::class, RoutePoint::class, Stop::class, TransportSegment::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

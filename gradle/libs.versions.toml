@@ -11,6 +11,7 @@ room = "2.6.1"
 kotlinxSerialization = "1.7.3"
 coilCompose = "2.7.0"
 gson = "2.11.0"
+mapboxMaps = "11.28.0"
 junit = "4.13.2"
 androidxJunit = "1.2.1"
 espressoCore = "3.6.1"
@@ -35,6 +36,8 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coilCompose" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+mapbox-maps = { group = "com.mapbox.maps", name = "android-ndk27", version.ref = "mapboxMaps" }
+mapbox-compose = { group = "com.mapbox.extension", name = "maps-compose-ndk27", version.ref = "mapboxMaps" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }

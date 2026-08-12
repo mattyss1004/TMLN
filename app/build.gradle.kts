@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,18 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
+
+val localProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+val mapboxAccessToken = localProperties.getProperty("MAPBOX_ACCESS_TOKEN")
+    ?: providers.gradleProperty("MAPBOX_ACCESS_TOKEN").orNull
+    ?: System.getenv("MAPBOX_ACCESS_TOKEN")
+    ?: ""
 
 android {
     namespace = "com.example.timelineviewer"
@@ -18,6 +32,13 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Mapbox reads this standard resource automatically at map initialization.
+        resValue("string", "mapbox_access_token", mapboxAccessToken)
+        buildConfigField(
+            "boolean",
+            "MAPBOX_ACCESS_TOKEN_CONFIGURED",
+            (mapboxAccessToken.isNotBlank()).toString()
+        )
     }
 
     signingConfigs {
@@ -56,6 +77,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -82,6 +104,10 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coil.compose)
     implementation(libs.gson)
+
+    // Mapbox 3D mapping and its Jetpack Compose extension.
+    implementation(libs.mapbox.maps)
+    implementation(libs.mapbox.compose)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

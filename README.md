@@ -29,3 +29,19 @@ A native Android application built with **Kotlin**, **Jetpack Compose**, and **R
 - **Database**: Room Database + KSP
 - **Architecture**: MVVM with Kotlin Flow & StateFlow
 - **Image Loading**: Coil Compose
+
+## Mapbox 3D Setup
+
+TMLN now uses the **Mapbox Maps SDK for Android** for real terrain, satellite imagery, 3D buildings, and cinematic map cameras. To keep credentials private, both tokens are supplied only through the developer machine and are ignored by Git.
+
+Create or update `local.properties` in the repository root:
+
+```properties
+# Public token beginning with pk.; used by the Android app at runtime.
+MAPBOX_ACCESS_TOKEN=pk.YOUR_PUBLIC_TOKEN
+
+# Secret token beginning with sk. and the DOWNLOADS:READ scope; used only by Gradle.
+MAPBOX_DOWNLOADS_TOKEN=sk.YOUR_DOWNLOADS_TOKEN
+```
+
+The map screen stays usable and shows a setup message until a public token is present. The visual engine includes **Cinematic** and **Satellite** styles, transport-coloured routes, weighted stop markers, and Overview, Follow, and Orbit camera controls.

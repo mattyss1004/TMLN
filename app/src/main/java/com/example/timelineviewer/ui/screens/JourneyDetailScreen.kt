@@ -31,7 +31,7 @@ fun JourneyDetailScreen(
     onSpeedChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var mapStyle by remember { mutableStateOf(MapStyle.TERRAIN) }
+    var mapStyle by remember { mutableStateOf(MapStyle.CINEMATIC) }
     var showStops by remember { mutableStateOf(true) }
     var isFullscreen by remember { mutableStateOf(false) }
     var showVideoExportDialog by remember { mutableStateOf(false) }
@@ -113,7 +113,7 @@ fun JourneyDetailScreen(
                         showStops = showStops,
                         isExpanded = isFullscreen,
                         onMapStyleToggle = {
-                            mapStyle = if (mapStyle == MapStyle.TERRAIN) MapStyle.SATELLITE else MapStyle.TERRAIN
+                            mapStyle = if (mapStyle == MapStyle.CINEMATIC) MapStyle.SATELLITE else MapStyle.CINEMATIC
                         },
                         onToggleStops = { showStops = !showStops },
                         onToggleFullscreen = { isFullscreen = !isFullscreen },
