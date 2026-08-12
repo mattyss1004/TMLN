@@ -45,18 +45,6 @@ android {
         )
     }
 
-    signingConfigs {
-        create("debugConfig") {
-            val keystoreFile = file("${rootDir}/debug.keystore")
-            if (keystoreFile.exists()) {
-                storeFile = keystoreFile
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
-            }
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -66,7 +54,8 @@ android {
             )
         }
         debug {
-            signingConfig = signingConfigs.getByName("debugConfig")
+            // Uses Android's standard debug signing configuration. The cloud workflow creates
+            // its short-lived keystore at the same default location before building.
         }
     }
 
