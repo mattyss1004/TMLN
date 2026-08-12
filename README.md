@@ -45,3 +45,12 @@ MAPBOX_DOWNLOADS_TOKEN=sk.YOUR_DOWNLOADS_TOKEN
 ```
 
 The map screen stays usable and shows a setup message until a public token is present. The visual engine includes **Cinematic** and **Satellite** styles, transport-coloured routes, weighted stop markers, and Overview, Follow, and Orbit camera controls.
+
+
+## Selected-Journey Offline Maps
+
+TMLN now keeps the personal journey archive locally in Room and can also download a **selected journey's Mapbox map pack**. From a journey detail screen, choose **Download for offline**. TMLN downloads the Mapbox Standard and Standard Satellite style packs together with a precise tile corridor following that journey; it does not download a whole city or country.
+
+The download card reports progress and lets you remove an offline pack later. Offline maps are intentionally opt-in so that storage, battery use, and cellular data remain in your control. To validate a completed pack, open the journey map, download the pack on Wi-Fi, turn on airplane mode, reopen the same journey, and test both the Cinematic and Satellite map styles near the route's normal playback zoom.
+
+For development, run the parser tests with `./gradlew testDebugUnitTest` after Android Studio has installed the Android SDK. Test device behaviour separately with a real Mapbox public token because style and tile downloads require an authenticated network connection.
