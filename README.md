@@ -54,3 +54,8 @@ TMLN now keeps the personal journey archive locally in Room and can also downloa
 The download card reports progress and lets you remove an offline pack later. Offline maps are intentionally opt-in so that storage, battery use, and cellular data remain in your control. To validate a completed pack, open the journey map, download the pack on Wi-Fi, turn on airplane mode, reopen the same journey, and test both the Cinematic and Satellite map styles near the route's normal playback zoom.
 
 For development, run the parser tests with `./gradlew testDebugUnitTest` after Android Studio has installed the Android SDK. Test device behaviour separately with a real Mapbox public token because style and tile downloads require an authenticated network connection.
+
+
+## Real-device testing
+
+The repository includes a practical first-install and offline-validation guide for the primary test phone: [`docs/XIAOMI_DEVICE_TESTING.md`](docs/XIAOMI_DEVICE_TESTING.md). It covers Android Studio setup, safe local Mapbox credentials, USB or Wi-Fi deployment, the initial UI/import/map pass, and the airplane-mode offline pack test.
