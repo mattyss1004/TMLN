@@ -90,7 +90,7 @@ fun InteractiveMapView(
     // deliberately select Overview or Orbit when they want a wider editorial framing.
     LaunchedEffect(currentPointIndex, isPlaying, cameraMode) {
         if (isPlaying && cameraMode == CameraMode.FOLLOW) {
-            mapViewportState.easeTo(
+            mapViewportState.setCameraOptions(
                 cameraOptions {
                     center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
                     zoom(16.2)
@@ -234,30 +234,57 @@ fun InteractiveMapView(
     }
 }
 
+private const val MAX_RENDER_POINTS_PER_SEGMENT = 5_000
+
+private data class PreparedRouteSegment(
+    val points: List<Point>,
+    val color: Color
+)
+
 @Composable
 private fun RouteAnnotations(
     points: List<RoutePoint>,
     segments: List<TransportSegment>
 ) {
-    val routeSegments = remember(points, segments) {
-        if (segments.isEmpty()) {
-            listOf(points to Color(0xFF2563EB))
-        } else {
-            segments.mapNotNull { segment ->
-                val segmentPoints = points.filter { it.sequenceOrder in segment.startIndex..segment.endIndex }
-                if (segmentPoints.size >= 2) segmentPoints to Color(segment.mode.hexColor) else null
-            }
-        }
-    }
+    // Route geometry is transformed once per loaded journey, rather than filtering and converting
+    // all stored points again whenever a playback frame recomposes the map.
+    val routeSegments = remember(points, segments) { prepareRouteSegments(points, segments) }
 
-    routeSegments.forEach { (segmentPoints, color) ->
-        PolylineAnnotation(
-            points = segmentPoints.map { Point.fromLngLat(it.longitude, it.latitude) }
-        ) {
-            lineColor = color
+    routeSegments.forEach { segment ->
+        PolylineAnnotation(points = segment.points) {
+            lineColor = segment.color
             lineWidth = 6.0
         }
     }
+}
+
+private fun prepareRouteSegments(
+    points: List<RoutePoint>,
+    segments: List<TransportSegment>
+): List<PreparedRouteSegment> {
+    if (points.size < 2) return emptyList()
+    val pointsBySequence = points.associateBy { it.sequenceOrder }
+    val sourceSegments = if (segments.isEmpty()) {
+        listOf(0 to (points.last().sequenceOrder.coerceAtLeast(1)) to Color(0xFF2563EB))
+    } else {
+        segments.map { segment ->
+            (segment.startIndex to segment.endIndex) to Color(segment.mode.hexColor)
+        }
+    }
+
+    return sourceSegments.mapNotNull { (range, color) ->
+        val mapPoints = (range.first..range.second)
+            .mapNotNull(pointsBySequence::get)
+            .map { Point.fromLngLat(it.longitude, it.latitude) }
+            .thinForRendering(MAX_RENDER_POINTS_PER_SEGMENT)
+        if (mapPoints.size >= 2) PreparedRouteSegment(mapPoints, color) else null
+    }
+}
+
+private fun List<Point>.thinForRendering(maxPoints: Int): List<Point> {
+    if (size <= maxPoints) return this
+    val stride = (size - 1).toDouble() / (maxPoints - 1).toDouble()
+    return List(maxPoints) { index -> this[(index * stride).toInt().coerceAtMost(lastIndex)] }
 }
 
 @Composable
