@@ -20,6 +20,10 @@ val mapboxAccessToken = localProperties.getProperty("MAPBOX_ACCESS_TOKEN")
     ?: System.getenv("MAPBOX_ACCESS_TOKEN")
     ?: ""
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.example.timelineviewer"
     compileSdk = 35

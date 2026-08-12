@@ -1,11 +1,11 @@
 package com.example.timelineviewer.data.repository
 
+import androidx.room.withTransaction
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
 import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
-import com.example.timelineviewer.data.model.TransportSegment
 import com.example.timelineviewer.data.parser.TimelineParser
 import kotlinx.coroutines.flow.Flow
 
@@ -21,39 +21,35 @@ class JourneyRepository(private val database: AppDatabase) {
         return JourneyDetailData(journey, points, stops, segments)
     }
 
-    suspend fun deleteJourney(id: Long) {
+    /**
+     * Child records are removed by the database foreign keys. Keeping this operation in a single
+     * transaction ensures the UI never observes an orphaned or half-deleted travel story.
+     */
+    suspend fun deleteJourney(id: Long) = database.withTransaction {
         database.journeyDao().deleteJourney(id)
-        database.routePointDao().deletePointsForJourney(id)
-        database.stopDao().deleteStopsForJourney(id)
-        database.transportSegmentDao().deleteSegmentsForJourney(id)
     }
 
-    suspend fun deleteJourneys(ids: List<Long>) {
-        database.journeyDao().deleteJourneys(ids)
-        ids.forEach { id ->
-            database.routePointDao().deletePointsForJourney(id)
-            database.stopDao().deleteStopsForJourney(id)
-            database.transportSegmentDao().deleteSegmentsForJourney(id)
-        }
+    suspend fun deleteJourneys(ids: List<Long>) = database.withTransaction {
+        if (ids.isNotEmpty()) database.journeyDao().deleteJourneys(ids)
     }
 
-    suspend fun deleteAllJourneys() {
+    suspend fun deleteAllJourneys() = database.withTransaction {
         database.journeyDao().deleteAllJourneys()
     }
 
+    /**
+     * Parse first, then persist the complete journey atomically. If any insertion fails, Room
+     * rolls back the parent record and all children instead of leaving a partial import behind.
+     */
     suspend fun importTimelineJson(jsonString: String, title: String): Boolean {
         val parsed = TimelineParser.parseTimelineJson(jsonString, title) ?: return false
 
-        val journeyId = database.journeyDao().insertJourney(parsed.journey)
-
-        val pointsWithId = parsed.points.map { it.copy(journeyId = journeyId) }
-        val stopsWithId = parsed.stops.map { it.copy(journeyId = journeyId) }
-        val segmentsWithId = parsed.segments.map { it.copy(journeyId = journeyId) }
-
-        database.routePointDao().insertPoints(pointsWithId)
-        database.stopDao().insertStops(stopsWithId)
-        database.transportSegmentDao().insertSegments(segmentsWithId)
-
+        database.withTransaction {
+            val journeyId = database.journeyDao().insertJourney(parsed.journey)
+            database.routePointDao().insertPoints(parsed.points.map { it.copy(journeyId = journeyId) })
+            database.stopDao().insertStops(parsed.stops.map { it.copy(journeyId = journeyId) })
+            database.transportSegmentDao().insertSegments(parsed.segments.map { it.copy(journeyId = journeyId) })
+        }
         return true
     }
 
@@ -90,41 +86,38 @@ class JourneyRepository(private val database: AppDatabase) {
             )
         }
 
-        stopNames.forEachIndexed { idx, name ->
-            val frac = (idx + 1).toDouble() / (stopNames.size + 1)
+        stopNames.forEachIndexed { index, name ->
+            val fraction = (index + 1).toDouble() / (stopNames.size + 1)
             stops.add(
                 Stop(
                     journeyId = 0L,
-                    latitude = startLat + (endLat - startLat) * frac,
-                    longitude = startLng + (endLng - startLng) * frac,
+                    latitude = startLat + (endLat - startLat) * fraction,
+                    longitude = startLng + (endLng - startLng) * fraction,
                     name = name,
-                    startTime = startTime + (idx * 1200000L),
-                    endTime = startTime + (idx * 1200000L) + 600000L,
+                    startTime = startTime + (index * 1200000L),
+                    endTime = startTime + (index * 1200000L) + 600000L,
                     durationSeconds = 600L,
-                    sequenceOrder = idx
+                    sequenceOrder = index
                 )
             )
         }
 
-        val journeyId = database.journeyDao().insertJourney(
-            Journey(
-                title = title,
-                description = description,
-                startTime = startTime,
-                endTime = endTime,
-                totalDistanceKm = 15.4,
-                totalDurationSeconds = 7200L,
-                pointCount = points.size,
-                stopCount = stops.size
+        return database.withTransaction {
+            val journeyId = database.journeyDao().insertJourney(
+                Journey(
+                    title = title,
+                    description = description,
+                    startTime = startTime,
+                    endTime = endTime,
+                    totalDistanceKm = 15.4,
+                    totalDurationSeconds = 7200L,
+                    pointCount = points.size,
+                    stopCount = stops.size
+                )
             )
-        )
-
-        val updatedPoints = points.map { it.copy(journeyId = journeyId) }
-        val updatedStops = stops.map { it.copy(journeyId = journeyId) }
-
-        database.routePointDao().insertPoints(updatedPoints)
-        database.stopDao().insertStops(updatedStops)
-
-        return journeyId
+            database.routePointDao().insertPoints(points.map { it.copy(journeyId = journeyId) })
+            database.stopDao().insertStops(stops.map { it.copy(journeyId = journeyId) })
+            journeyId
+        }
     }
 }

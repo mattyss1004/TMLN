@@ -12,8 +12,8 @@ import com.example.timelineviewer.data.model.TransportSegment
 
 @Database(
     entities = [Journey::class, RoutePoint::class, Stop::class, TransportSegment::class],
-    version = 2,
-    exportSchema = false
+    version = 3,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -33,7 +33,10 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "timeline_viewer_database"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(
+                    DatabaseMigrations.MIGRATION_1_2,
+                    DatabaseMigrations.MIGRATION_2_3
+                )
                 .build()
                 INSTANCE = instance
                 instance

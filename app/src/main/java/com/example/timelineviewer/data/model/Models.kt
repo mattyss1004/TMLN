@@ -1,6 +1,8 @@
 package com.example.timelineviewer.data.model
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlinx.serialization.Serializable
 
@@ -32,7 +34,18 @@ data class Journey(
 )
 
 @Serializable
-@Entity(tableName = "route_points")
+@Entity(
+    tableName = "route_points",
+    foreignKeys = [
+        ForeignKey(
+            entity = Journey::class,
+            parentColumns = ["id"],
+            childColumns = ["journeyId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["journeyId", "sequenceOrder"])]
+)
 data class RoutePoint(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val journeyId: Long,
@@ -45,7 +58,18 @@ data class RoutePoint(
 )
 
 @Serializable
-@Entity(tableName = "stops")
+@Entity(
+    tableName = "stops",
+    foreignKeys = [
+        ForeignKey(
+            entity = Journey::class,
+            parentColumns = ["id"],
+            childColumns = ["journeyId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["journeyId", "sequenceOrder"])]
+)
 data class Stop(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val journeyId: Long,
@@ -61,7 +85,18 @@ data class Stop(
 )
 
 @Serializable
-@Entity(tableName = "transport_segments")
+@Entity(
+    tableName = "transport_segments",
+    foreignKeys = [
+        ForeignKey(
+            entity = Journey::class,
+            parentColumns = ["id"],
+            childColumns = ["journeyId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["journeyId", "startIndex"])]
+)
 data class TransportSegment(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val journeyId: Long,
