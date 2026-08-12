@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
             val currentPointIndex by viewModel.currentPointIndex.collectAsStateWithLifecycle()
             val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
 
-            TimelineViewerTheme(darkTheme = isDarkTheme) {
+            TimelineViewerTheme(darkTheme = isDarkTheme, dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     if (activeDetail != null) {
                         JourneyDetailScreen(
