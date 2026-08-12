@@ -64,3 +64,6 @@ The repository includes a practical first-install and offline-validation guide f
 ## Phone-only installation
 
 If Android Studio is not available, TMLN can be built from GitHub and installed directly on a phone. The repository includes a secure manual workflow that produces a downloadable debug APK; follow [`docs/PHONE_ONLY_INSTALL.md`](docs/PHONE_ONLY_INSTALL.md) for the one-time Mapbox secret setup, GitHub build trigger, Xiaomi APK installation, and offline validation.
+
+
+For a click-by-click guide using only a Xiaomi phone, see [`docs/XIAOMI_PHONE_ONLY_DETAILED_SETUP.md`](docs/XIAOMI_PHONE_ONLY_DETAILED_SETUP.md). It includes secret setup, the exact GitHub build flow, APK extraction and installation, first tests, and fixes for common failures.
