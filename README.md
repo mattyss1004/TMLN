@@ -59,3 +59,8 @@ For development, run the parser tests with `./gradlew testDebugUnitTest` after A
 ## Real-device testing
 
 The repository includes a practical first-install and offline-validation guide for the primary test phone: [`docs/XIAOMI_DEVICE_TESTING.md`](docs/XIAOMI_DEVICE_TESTING.md). It covers Android Studio setup, safe local Mapbox credentials, USB or Wi-Fi deployment, the initial UI/import/map pass, and the airplane-mode offline pack test.
+
+
+## Phone-only installation
+
+If Android Studio is not available, TMLN can be built from GitHub and installed directly on a phone. The repository includes a secure manual workflow that produces a downloadable debug APK; follow [`docs/PHONE_ONLY_INSTALL.md`](docs/PHONE_ONLY_INSTALL.md) for the one-time Mapbox secret setup, GitHub build trigger, Xiaomi APK installation, and offline validation.
