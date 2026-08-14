@@ -49,6 +49,9 @@ class MainActivity : ComponentActivity() {
                             onPlayPauseToggle = { viewModel.togglePlayPause() },
                             onSeekToIndex = { viewModel.seekToIndex(it) },
                             onSpeedChange = { viewModel.setSpeed(it) },
+                            onSaveJourneyMetadata = { title, description ->
+                                viewModel.updateActiveJourneyMetadata(title, description)
+                            },
                             onDownloadOffline = { viewModel.downloadActiveJourneyForOfflineUse() },
                             onRemoveOffline = { viewModel.removeActiveJourneyOfflinePack() }
                         )

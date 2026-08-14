@@ -54,8 +54,8 @@ android {
             )
         }
         debug {
-            // Uses Android's standard debug signing configuration. The cloud workflow creates
-            // its short-lived keystore at the same default location before building.
+            // Uses Android's standard debug signing configuration. The cloud workflow restores
+            // the stable private keystore at Android's default location before building.
         }
     }
 

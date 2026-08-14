@@ -43,6 +43,9 @@ interface JourneyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertJourney(journey: Journey): Long
 
+    @Query("UPDATE journeys SET title = :title, description = :description WHERE id = :id")
+    suspend fun updateJourneyMetadata(id: Long, title: String, description: String): Int
+
     @Query("DELETE FROM journeys WHERE id = :id")
     suspend fun deleteJourney(id: Long)
 

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
+import com.example.timelineviewer.data.model.JourneyMetadataEditor
 import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.repository.JourneyRepository
@@ -131,6 +132,22 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         pausePlayback()
         _activeJourneyDetail.value = null
         _activeOfflineMapRegion.value = null
+    }
+
+    /** Saves a title and description without replacing the route, stops, or offline map pack. */
+    suspend fun updateActiveJourneyMetadata(title: String, description: String): Boolean {
+        val detail = _activeJourneyDetail.value ?: return false
+        val metadata = JourneyMetadataEditor.validate(title, description).metadata ?: return false
+        val saved = repository.updateJourneyMetadata(detail.journey.id, metadata)
+        if (saved) {
+            _activeJourneyDetail.value = detail.copy(
+                journey = detail.journey.copy(
+                    title = metadata.title,
+                    description = metadata.description
+                )
+            )
+        }
+        return saved
     }
 
     fun downloadActiveJourneyForOfflineUse() {

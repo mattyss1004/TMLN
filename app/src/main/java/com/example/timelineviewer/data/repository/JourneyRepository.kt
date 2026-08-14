@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
+import com.example.timelineviewer.data.model.JourneyMetadata
 import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
@@ -32,6 +33,15 @@ class JourneyRepository(private val database: AppDatabase) {
      */
     suspend fun deleteJourney(id: Long) = database.withTransaction {
         database.journeyDao().deleteJourney(id)
+    }
+
+    /** Updates only the user-authored story metadata; route and local map data remain untouched. */
+    suspend fun updateJourneyMetadata(id: Long, metadata: JourneyMetadata): Boolean = database.withTransaction {
+        database.journeyDao().updateJourneyMetadata(
+            id = id,
+            title = metadata.title,
+            description = metadata.description
+        ) == 1
     }
 
     suspend fun deleteJourneys(ids: List<Long>) = database.withTransaction {

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.example.timelineviewer.data.analysis.JourneyIntelligence
 import com.example.timelineviewer.data.analysis.TransportShare
 import com.example.timelineviewer.data.model.JourneyDetailData
+import com.example.timelineviewer.data.model.JourneyMetadataEditor
 import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.model.Stop
@@ -27,6 +28,7 @@ import com.example.timelineviewer.ui.components.*
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,6 +42,7 @@ fun JourneyDetailScreen(
     onPlayPauseToggle: () -> Unit,
     onSeekToIndex: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    onSaveJourneyMetadata: suspend (String, String) -> Boolean,
     onDownloadOffline: () -> Unit,
     onRemoveOffline: () -> Unit,
     modifier: Modifier = Modifier
@@ -48,6 +51,7 @@ fun JourneyDetailScreen(
     var showStops by remember { mutableStateOf(true) }
     var isFullscreen by remember { mutableStateOf(false) }
     var showVideoExportDialog by remember { mutableStateOf(false) }
+    var showJourneyEditor by remember { mutableStateOf(false) }
 
     val currentPoint = remember(detail.points, currentPointIndex) {
         detail.points.getOrNull(currentPointIndex.coerceIn(0, (detail.points.size - 1).coerceAtLeast(0)))
@@ -82,6 +86,12 @@ fun JourneyDetailScreen(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = { showJourneyEditor = true },
+                            modifier = Modifier.testTag("open_journey_editor")
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit journey")
+                        }
                         IconButton(
                             onClick = { showVideoExportDialog = true },
                             modifier = Modifier.testTag("open_video_export")
@@ -182,12 +192,134 @@ fun JourneyDetailScreen(
         }
     }
 
+    if (showJourneyEditor) {
+        JourneyMetadataEditorDialog(
+            initialTitle = detail.journey.title,
+            initialDescription = detail.journey.description,
+            onSave = onSaveJourneyMetadata,
+            onDismiss = { showJourneyEditor = false }
+        )
+    }
+
     if (showVideoExportDialog) {
         VideoExportDialog(
             journeyTitle = detail.journey.title,
             onDismiss = { showVideoExportDialog = false }
         )
     }
+}
+
+@Composable
+private fun JourneyMetadataEditorDialog(
+    initialTitle: String,
+    initialDescription: String,
+    onSave: suspend (String, String) -> Boolean,
+    onDismiss: () -> Unit
+) {
+    var title by remember(initialTitle) { mutableStateOf(initialTitle) }
+    var description by remember(initialDescription) { mutableStateOf(initialDescription) }
+    var titleError by remember { mutableStateOf<String?>(null) }
+    var descriptionError by remember { mutableStateOf<String?>(null) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = { Text("Edit journey") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Refine the story in your library. Your route, stops, Journey Brief, and offline map remain unchanged.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = {
+                        title = it
+                        titleError = null
+                        saveError = null
+                    },
+                    label = { Text("Journey title") },
+                    singleLine = true,
+                    enabled = !isSaving,
+                    isError = titleError != null,
+                    supportingText = {
+                        Text(titleError ?: "${title.length}/${JourneyMetadataEditor.MAX_TITLE_LENGTH}")
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_journey_title")
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = {
+                        description = it
+                        descriptionError = null
+                        saveError = null
+                    },
+                    label = { Text("Your note about this journey") },
+                    placeholder = { Text("What made this journey memorable?") },
+                    minLines = 3,
+                    maxLines = 6,
+                    enabled = !isSaving,
+                    isError = descriptionError != null,
+                    supportingText = {
+                        Text(descriptionError ?: "${description.length}/${JourneyMetadataEditor.MAX_DESCRIPTION_LENGTH}")
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_journey_description")
+                )
+                saveError?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val validation = JourneyMetadataEditor.validate(title, description)
+                    titleError = validation.titleError
+                    descriptionError = validation.descriptionError
+                    val metadata = validation.metadata ?: return@Button
+                    coroutineScope.launch {
+                        isSaving = true
+                        val saved = onSave(metadata.title, metadata.description)
+                        isSaving = false
+                        if (saved) onDismiss() else saveError = "This journey could not be saved. Please try again."
+                    }
+                },
+                enabled = !isSaving,
+                modifier = Modifier.testTag("save_journey_metadata")
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text("Save changes")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
