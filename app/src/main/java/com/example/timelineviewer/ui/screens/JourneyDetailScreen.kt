@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.timelineviewer.data.analysis.JourneyIntelligence
+import com.example.timelineviewer.data.analysis.TransportShare
 import com.example.timelineviewer.data.model.JourneyDetailData
 import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.OfflineRegionStatus
@@ -163,7 +165,11 @@ fun JourneyDetailScreen(
                     }
 
                     item {
-                        JourneyStorySummary(detail)
+                        JourneyBriefPanel(detail)
+                    }
+
+                    item {
+                        JourneyChaptersPanel(detail)
                     }
 
                     if (detail.stops.isNotEmpty()) {
@@ -259,64 +265,124 @@ private fun OfflineMapPackCard(
 }
 
 @Composable
-private fun JourneyStorySummary(detail: JourneyDetailData) {
+private fun JourneyBriefPanel(detail: JourneyDetailData) {
+    val brief = remember(detail) { JourneyIntelligence.build(detail) }
     Surface(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceVariant
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Journey at a glance",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StoryFact(
-                    icon = Icons.Default.Directions,
-                    label = "Main mode",
-                    value = detail.journey.dominantMode.label
-                )
-                StoryFact(
-                    icon = Icons.Default.Speed,
-                    label = "Peak speed",
-                    value = "${formatDistance(detail.journey.maxSpeedKmh)} km/h"
-                )
-                StoryFact(
-                    icon = Icons.Default.Flag,
-                    label = "Highlights",
-                    value = "${detail.stops.count { it.importanceScore >= 80 }}"
-                )
-            }
-            detail.journey.highlightPlaceName?.takeIf { it.isNotBlank() }?.let { place ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.secondaryContainer)
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        modifier = Modifier.padding(7.dp).size(16.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Journey brief",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Story highlight: $place",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = brief.dateLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            Text(
+                text = brief.headline,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = brief.narrative,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                BriefMetric(
+                    icon = Icons.Default.Route,
+                    label = "Distance",
+                    value = brief.distanceLabel,
+                    modifier = Modifier.weight(1f)
+                )
+                BriefMetric(
+                    icon = Icons.Default.Schedule,
+                    label = "Duration",
+                    value = brief.durationLabel,
+                    modifier = Modifier.weight(1f)
+                )
+                BriefMetric(
+                    icon = Icons.Default.Flag,
+                    label = "Stops",
+                    value = detail.stops.size.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            if (brief.transportMix.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "How you travelled",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    brief.transportMix.take(3).forEach { share -> TransportMixRow(share) }
+                }
+            }
+
+            if (brief.highlights.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Story highlights",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    brief.highlights.take(3).forEach { highlight ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = Color(0xFFF59E0B)
+                            )
+                            Text(
+                                text = highlight.name,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = JourneyIntelligence.formatDuration(highlight.durationSeconds),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -324,34 +390,168 @@ private fun JourneyStorySummary(detail: JourneyDetailData) {
 }
 
 @Composable
-private fun StoryFact(
+private fun BriefMetric(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    value: String
+    value: String,
+    modifier: Modifier = Modifier
 ) {
-    Column(modifier = Modifier.widthIn(min = 72.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = value,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface
+    }
+}
+
+@Composable
+private fun TransportMixRow(share: TransportShare) {
+    val accent = Color(share.mode.hexColor)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = when (share.mode) {
+                com.example.timelineviewer.data.model.TransportMode.WALKING -> Icons.Default.DirectionsWalk
+                com.example.timelineviewer.data.model.TransportMode.CYCLING -> Icons.Default.DirectionsBike
+                com.example.timelineviewer.data.model.TransportMode.DRIVING -> Icons.Default.DirectionsCar
+                com.example.timelineviewer.data.model.TransportMode.TRANSIT -> Icons.Default.Train
+                com.example.timelineviewer.data.model.TransportMode.UNKNOWN -> Icons.Default.Route
+            },
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = accent
         )
+        Text(
+            text = share.mode.label,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "${share.sharePercent}% · ${formatDistance(share.distanceKm)} km",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun JourneyChaptersPanel(detail: JourneyDetailData) {
+    val chapters = remember(detail) { JourneyIntelligence.build(detail).chapters }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Timeline,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Journey chapters",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            chapters.forEachIndexed { index, chapter ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (chapter.isHighlight) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            }
+                        ) {
+                            Icon(
+                                imageVector = when {
+                                    index == 0 -> Icons.Default.PlayArrow
+                                    index == chapters.lastIndex -> Icons.Default.Flag
+                                    chapter.isHighlight -> Icons.Default.Star
+                                    else -> Icons.Default.Place
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.padding(5.dp).size(14.dp),
+                                tint = if (chapter.isHighlight) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                }
+                            )
+                        }
+                        if (index != chapters.lastIndex) {
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(18.dp)
+                                    .background(MaterialTheme.colorScheme.outlineVariant)
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(bottom = if (index == chapters.lastIndex) 0.dp else 8.dp)
+                    ) {
+                        Text(
+                            text = chapter.title,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = chapter.subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
