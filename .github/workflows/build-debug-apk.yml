@@ -31,6 +31,8 @@ jobs:
           mkdir -p "$HOME/.android"
           printf '%s' "$TMLN_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+          ACTUAL_CERT_SHA256="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk -F': ' '/SHA256:/{gsub(/:/, "", $2); print $2; exit}')"
+          test "$ACTUAL_CERT_SHA256" = "2966B16804A6FCECEF42A2B23CCD0F9150B9286E4DEA3CB058EA83993382DEF0" || { echo "The signing secret does not match TMLN's stable certificate."; exit 1; }
 
       - name: Verify required Mapbox secrets
         env:
@@ -44,6 +46,7 @@ jobs:
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
           MAPBOX_DOWNLOADS_TOKEN: ${{ secrets.MAPBOX_DOWNLOADS_TOKEN }}
+          TMLN_SIGNING_STORE_FILE: $HOME/.android/debug.keystore
         run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Upload installable APK

@@ -20,6 +20,10 @@ val mapboxAccessToken = localProperties.getProperty("MAPBOX_ACCESS_TOKEN")
     ?: System.getenv("MAPBOX_ACCESS_TOKEN")
     ?: ""
 
+// Set only by the protected cloud workflow. Keeping the path explicit prevents a runner-provided
+// debug key from silently replacing TMLN's stable signing identity.
+val stableSigningStoreFile = System.getenv("TMLN_SIGNING_STORE_FILE")
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
@@ -45,6 +49,17 @@ android {
         )
     }
 
+    signingConfigs {
+        getByName("debug") {
+            if (!stableSigningStoreFile.isNullOrBlank()) {
+                storeFile = file(stableSigningStoreFile)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -54,8 +69,9 @@ android {
             )
         }
         debug {
-            // Uses Android's standard debug signing configuration. The cloud workflow restores
-            // the stable private keystore at Android's default location before building.
+            // The cloud workflow provides the stable private keystore path above before Gradle
+            // configures this build. Local debug builds retain Android's standard default key.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
