@@ -18,6 +18,11 @@ import com.example.timelineviewer.BuildConfig
 import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.data.model.TransportSegment
+import com.example.timelineviewer.ui.map.CinematicCameraDirector
+import com.example.timelineviewer.ui.map.JourneyBaseStyle
+import com.example.timelineviewer.ui.map.JourneyCameraMode
+import com.example.timelineviewer.ui.map.JourneySceneMood
+import com.example.timelineviewer.ui.map.MapExperienceState
 import com.mapbox.geojson.Point
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.extension.compose.MapboxMap
@@ -32,14 +37,6 @@ import com.mapbox.maps.extension.compose.style.standard.rememberStandardSatellit
 import com.mapbox.maps.extension.compose.style.standard.rememberStandardStyleState
 import kotlin.math.abs
 
-enum class MapStyle {
-    CINEMATIC, SATELLITE
-}
-
-private enum class CameraMode {
-    OVERVIEW, FOLLOW, ORBIT
-}
-
 /**
  * A real Mapbox-based map canvas that renders imported journey geometry on the 3D Mapbox Standard
  * basemap. It keeps all of the project-specific route, stop, and playback data local while Mapbox
@@ -53,13 +50,15 @@ fun InteractiveMapView(
     currentPointIndex: Int = 0,
     isPlaying: Boolean = false,
     playedPointIndex: Int? = null,
-    mapStyle: MapStyle = MapStyle.CINEMATIC,
-    showStops: Boolean = true,
+    mapExperience: MapExperienceState = MapExperienceState(),
     isExpanded: Boolean = false,
-    preferFollowCamera: Boolean = false,
     showControls: Boolean = true,
     showActiveBadge: Boolean = true,
+    onCameraModeChange: (JourneyCameraMode) -> Unit = {},
     onMapStyleToggle: () -> Unit = {},
+    onCycleSceneMood: () -> Unit = {},
+    onToggleThreeD: () -> Unit = {},
+    onToggleLabels: () -> Unit = {},
     onToggleStops: () -> Unit = {},
     onToggleFullscreen: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -76,34 +75,28 @@ fun InteractiveMapView(
         return
     }
 
-    val routeCenter = remember(points) { routeCenter(points) }
-    val overviewZoom = remember(points) { routeOverviewZoom(points) }
+    val initialPose = remember(points) {
+        CinematicCameraDirector.poseFor(JourneyCameraMode.OVERVIEW, points, 0)!!
+    }
     val mapViewportState = rememberMapViewportState {
         setCameraOptions {
-            center(routeCenter)
-            zoom(overviewZoom)
-            pitch(52.0)
-            bearing(0.0)
+            center(Point.fromLngLat(initialPose.longitude, initialPose.latitude))
+            zoom(initialPose.zoom)
+            pitch(initialPose.pitch)
+            bearing(initialPose.bearing)
         }
     }
 
-    var cameraMode by remember(preferFollowCamera) {
-        mutableStateOf(if (preferFollowCamera) CameraMode.FOLLOW else CameraMode.OVERVIEW)
-    }
     val activePoint = points[currentPointIndex.coerceIn(0, points.lastIndex)]
+    val activePose = remember(points, currentPointIndex, mapExperience.cameraMode) {
+        CinematicCameraDirector.poseFor(mapExperience.cameraMode, points, currentPointIndex)!!
+    }
 
-    // During playback, Follow creates the cinematic "traveller camera" effect. The user can
-    // deliberately select Overview or Orbit when they want a wider editorial framing.
-    LaunchedEffect(currentPointIndex, isPlaying, cameraMode) {
-        if (isPlaying && cameraMode == CameraMode.FOLLOW) {
-            mapViewportState.setCameraOptions(
-                cameraOptions {
-                    center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                    zoom(15.8)
-                    pitch(58.0)
-                    bearing(activePoint.bearing.toDouble())
-                }
-            )
+    // One camera director owns playback framing. Overview deliberately stays static while the
+    // other modes follow the actual active route point using their distinct pose.
+    LaunchedEffect(currentPointIndex, isPlaying, mapExperience.cameraMode, activePose) {
+        if (isPlaying && mapExperience.cameraMode != JourneyCameraMode.OVERVIEW) {
+            mapViewportState.setCameraOptions(activePose.toMapboxCameraOptions())
         }
     }
 
@@ -116,41 +109,48 @@ fun InteractiveMapView(
             modifier = Modifier.fillMaxSize(),
             mapViewportState = mapViewportState,
             style = {
-                if (mapStyle == MapStyle.SATELLITE) {
-                    MapboxStandardSatelliteStyle(
+                key(
+                    mapExperience.baseStyle,
+                    mapExperience.sceneMood,
+                    mapExperience.showThreeDObjects,
+                    mapExperience.showLabels
+                ) {
+                    if (mapExperience.baseStyle == JourneyBaseStyle.SATELLITE) {
+                        MapboxStandardSatelliteStyle(
                         standardSatelliteStyleState = rememberStandardSatelliteStyleState {
                             configurationsState.apply {
-                                lightPreset = LightPresetValue.DAY
-                                showPlaceLabels = BooleanValue(false)
-                                showRoadLabels = BooleanValue(true)
-                                showPointOfInterestLabels = BooleanValue(false)
+                                lightPreset = mapExperience.sceneMood.toLightPreset()
+                                showPlaceLabels = BooleanValue(mapExperience.showLabels)
+                                showRoadLabels = BooleanValue(mapExperience.showLabels)
+                                showPointOfInterestLabels = BooleanValue(mapExperience.showLabels)
                             }
                         }
-                    )
-                } else {
-                    MapboxStandardStyle(
+                        )
+                    } else {
+                        MapboxStandardStyle(
                         standardStyleState = rememberStandardStyleState {
                             configurationsState.apply {
-                                // Standard supports 3D building geometry, enhanced by the pitched
-                                // camera used for overview, follow, and orbit modes.
-                                show3dObjects = BooleanValue(true)
-                                lightPreset = LightPresetValue.DAY
-                                showPlaceLabels = BooleanValue(false)
-                                showRoadLabels = BooleanValue(true)
-                                showPointOfInterestLabels = BooleanValue(false)
+                                // Standard supplies actual buildings, trees, terrain, and landmarks;
+                                // the user-visible scene state controls those supported layers.
+                                show3dObjects = BooleanValue(mapExperience.showThreeDObjects)
+                                lightPreset = mapExperience.sceneMood.toLightPreset()
+                                showPlaceLabels = BooleanValue(mapExperience.showLabels)
+                                showRoadLabels = BooleanValue(mapExperience.showLabels)
+                                showPointOfInterestLabels = BooleanValue(mapExperience.showLabels)
                             }
                         }
-                    )
+                        )
+                    }
                 }
             }
         ) {
             RouteAnnotations(
                 points = points,
                 segments = segments,
-                playedPointIndex = playedPointIndex
+                playedPointIndex = playedPointIndex.takeIf { mapExperience.progressiveRouteEnabled }
             )
 
-            if (showStops) {
+            if (mapExperience.showStops) {
                 stops.forEach { stop ->
                     StopAnnotation(stop)
                 }
@@ -175,45 +175,18 @@ fun InteractiveMapView(
 
         if (showControls) {
             MapControlStack(
-                mapStyle = mapStyle,
-                showStops = showStops,
-                cameraMode = cameraMode,
+                mapExperience = mapExperience,
                 isExpanded = isExpanded,
+                onCameraModeSelect = { mode ->
+                    onCameraModeChange(mode)
+                    val pose = CinematicCameraDirector.poseFor(mode, points, currentPointIndex)!!
+                    mapViewportState.easeTo(pose.toMapboxCameraOptions())
+                },
                 onMapStyleToggle = onMapStyleToggle,
+                onCycleSceneMood = onCycleSceneMood,
+                onToggleThreeD = onToggleThreeD,
+                onToggleLabels = onToggleLabels,
                 onToggleStops = onToggleStops,
-                onOverview = {
-                    cameraMode = CameraMode.OVERVIEW
-                    mapViewportState.easeTo(
-                        cameraOptions {
-                            center(routeCenter)
-                            zoom(overviewZoom)
-                            pitch(52.0)
-                            bearing(0.0)
-                        }
-                    )
-                },
-                onFollow = {
-                    cameraMode = CameraMode.FOLLOW
-                    mapViewportState.easeTo(
-                        cameraOptions {
-                            center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                            zoom(15.8)
-                            pitch(58.0)
-                            bearing(activePoint.bearing.toDouble())
-                        }
-                    )
-                },
-                onOrbit = {
-                    cameraMode = CameraMode.ORBIT
-                    mapViewportState.easeTo(
-                        cameraOptions {
-                            center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                            zoom(15.0)
-                            pitch(58.0)
-                            bearing((activePoint.bearing + 55f).toDouble())
-                        }
-                    )
-                },
                 onToggleFullscreen = onToggleFullscreen,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -226,7 +199,7 @@ fun InteractiveMapView(
                 activePoint = activePoint,
                 currentPointIndex = currentPointIndex,
                 pointCount = points.size,
-                cameraMode = cameraMode,
+                cameraMode = mapExperience.cameraMode,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(12.dp)
@@ -335,15 +308,14 @@ private fun StopAnnotation(stop: Stop) {
 
 @Composable
 private fun MapControlStack(
-    mapStyle: MapStyle,
-    showStops: Boolean,
-    cameraMode: CameraMode,
+    mapExperience: MapExperienceState,
     isExpanded: Boolean,
+    onCameraModeSelect: (JourneyCameraMode) -> Unit,
     onMapStyleToggle: () -> Unit,
+    onCycleSceneMood: () -> Unit,
+    onToggleThreeD: () -> Unit,
+    onToggleLabels: () -> Unit,
     onToggleStops: () -> Unit,
-    onOverview: () -> Unit,
-    onFollow: () -> Unit,
-    onOrbit: () -> Unit,
     onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -357,45 +329,75 @@ private fun MapControlStack(
             modifier = Modifier.padding(4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-        MapControlButton(
-            icon = if (mapStyle == MapStyle.CINEMATIC) Icons.Default.SatelliteAlt else Icons.Default.Map,
-            contentDescription = "Toggle Map Style",
-            onClick = onMapStyleToggle,
-            testTag = "map_style_toggle"
-        )
-        MapControlButton(
-            icon = if (showStops) Icons.Default.Place else Icons.Default.LocationOff,
-            contentDescription = "Toggle Stops",
-            onClick = onToggleStops,
-            testTag = "toggle_stops"
-        )
-        MapControlButton(
-            icon = Icons.Default.Map,
-            contentDescription = "Route Overview",
-            onClick = onOverview,
-            selected = cameraMode == CameraMode.OVERVIEW,
-            testTag = "camera_overview"
-        )
-        MapControlButton(
-            icon = Icons.Default.MyLocation,
-            contentDescription = "Follow Traveller",
-            onClick = onFollow,
-            selected = cameraMode == CameraMode.FOLLOW,
-            testTag = "camera_follow"
-        )
-        MapControlButton(
-            icon = Icons.Default.Refresh,
-            contentDescription = "Orbit Traveller",
-            onClick = onOrbit,
-            selected = cameraMode == CameraMode.ORBIT,
-            testTag = "camera_orbit"
-        )
-        MapControlButton(
-            icon = if (isExpanded) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-            contentDescription = "Fullscreen",
-            onClick = onToggleFullscreen,
-            testTag = "toggle_fullscreen"
-        )
+            MapControlButton(
+                icon = if (mapExperience.baseStyle == JourneyBaseStyle.STANDARD) Icons.Default.SatelliteAlt else Icons.Default.Map,
+                contentDescription = "Toggle Map Style",
+                onClick = onMapStyleToggle,
+                selected = mapExperience.baseStyle == JourneyBaseStyle.SATELLITE,
+                testTag = "map_style_toggle"
+            )
+            MapControlButton(
+                icon = Icons.Default.AutoAwesome,
+                contentDescription = "Cycle Day Dusk Night Scene",
+                onClick = onCycleSceneMood,
+                selected = mapExperience.sceneMood != JourneySceneMood.DAY,
+                testTag = "cycle_scene_mood"
+            )
+            MapControlButton(
+                icon = Icons.Default.LocationCity,
+                contentDescription = "Toggle 3D Buildings and Terrain",
+                onClick = onToggleThreeD,
+                selected = mapExperience.showThreeDObjects,
+                testTag = "toggle_3d_objects"
+            )
+            MapControlButton(
+                icon = if (mapExperience.showLabels) Icons.Default.Label else Icons.Default.LabelOff,
+                contentDescription = "Toggle Map Labels",
+                onClick = onToggleLabels,
+                selected = mapExperience.showLabels,
+                testTag = "toggle_labels"
+            )
+            MapControlButton(
+                icon = if (mapExperience.showStops) Icons.Default.Place else Icons.Default.LocationOff,
+                contentDescription = "Toggle Stops",
+                onClick = onToggleStops,
+                selected = mapExperience.showStops,
+                testTag = "toggle_stops"
+            )
+            MapControlButton(
+                icon = Icons.Default.Map,
+                contentDescription = "Route Overview",
+                onClick = { onCameraModeSelect(JourneyCameraMode.OVERVIEW) },
+                selected = mapExperience.cameraMode == JourneyCameraMode.OVERVIEW,
+                testTag = "camera_overview"
+            )
+            MapControlButton(
+                icon = Icons.Default.MyLocation,
+                contentDescription = "Follow Traveller",
+                onClick = { onCameraModeSelect(JourneyCameraMode.FOLLOW) },
+                selected = mapExperience.cameraMode == JourneyCameraMode.FOLLOW,
+                testTag = "camera_follow"
+            )
+            MapControlButton(
+                icon = Icons.Default.AutoAwesome,
+                contentDescription = "Cinematic Traveller Camera",
+                onClick = { onCameraModeSelect(JourneyCameraMode.CINEMA) },
+                selected = mapExperience.cameraMode == JourneyCameraMode.CINEMA,
+                testTag = "camera_cinema"
+            )
+            MapControlButton(
+                icon = Icons.Default.Refresh,
+                contentDescription = "Orbit Traveller",
+                onClick = { onCameraModeSelect(JourneyCameraMode.ORBIT) },
+                selected = mapExperience.cameraMode == JourneyCameraMode.ORBIT,
+                testTag = "camera_orbit"
+            )
+            MapControlButton(
+                icon = if (isExpanded) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                contentDescription = "Fullscreen",
+                onClick = onToggleFullscreen,
+                testTag = "toggle_fullscreen"
+            )
         }
     }
 }
@@ -405,7 +407,7 @@ private fun ActiveLocationBadge(
     activePoint: RoutePoint,
     currentPointIndex: Int,
     pointCount: Int,
-    cameraMode: CameraMode,
+    cameraMode: JourneyCameraMode,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -427,7 +429,7 @@ private fun ActiveLocationBadge(
             Spacer(modifier = Modifier.width(8.dp))
             Column {
                 Text(
-                    text = cameraMode.name.lowercase().replaceFirstChar { it.uppercase() } + " camera",
+                    text = cameraMode.label + " camera",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -533,6 +535,19 @@ private fun MapControlButton(
             )
         }
     }
+}
+
+private fun com.example.timelineviewer.ui.map.JourneyCameraPose.toMapboxCameraOptions() = cameraOptions {
+    center(Point.fromLngLat(this@toMapboxCameraOptions.longitude, this@toMapboxCameraOptions.latitude))
+    zoom(this@toMapboxCameraOptions.zoom)
+    pitch(this@toMapboxCameraOptions.pitch)
+    bearing(this@toMapboxCameraOptions.bearing)
+}
+
+private fun JourneySceneMood.toLightPreset(): LightPresetValue = when (this) {
+    JourneySceneMood.DAY -> LightPresetValue.DAY
+    JourneySceneMood.DUSK -> LightPresetValue.DUSK
+    JourneySceneMood.NIGHT -> LightPresetValue.NIGHT
 }
 
 private fun routeCenter(points: List<RoutePoint>): Point = Point.fromLngLat(

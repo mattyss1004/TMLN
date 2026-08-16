@@ -25,6 +25,8 @@ import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.ui.components.*
+import com.example.timelineviewer.ui.map.JourneyCameraMode
+import com.example.timelineviewer.ui.map.MapExperienceState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -38,6 +40,13 @@ fun JourneyDetailScreen(
     currentPointIndex: Int,
     playbackSpeed: Float,
     offlineMapRegion: OfflineMapRegion?,
+    mapExperience: MapExperienceState,
+    onCameraModeChange: (JourneyCameraMode) -> Unit,
+    onMapStyleToggle: () -> Unit,
+    onCycleSceneMood: () -> Unit,
+    onToggleThreeD: () -> Unit,
+    onToggleLabels: () -> Unit,
+    onToggleStops: () -> Unit,
     onBackClick: () -> Unit,
     onPlayPauseToggle: () -> Unit,
     onSeekToIndex: (Int) -> Unit,
@@ -48,8 +57,6 @@ fun JourneyDetailScreen(
     onRemoveOffline: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var mapStyle by remember { mutableStateOf(MapStyle.CINEMATIC) }
-    var showStops by remember { mutableStateOf(true) }
     var isFullscreen by remember { mutableStateOf(false) }
     var showVideoExportDialog by remember { mutableStateOf(false) }
     var showJourneyEditor by remember { mutableStateOf(false) }
@@ -131,13 +138,14 @@ fun JourneyDetailScreen(
                     segments = detail.segments,
                     currentPointIndex = currentPointIndex,
                     isPlaying = isPlaying,
-                    mapStyle = mapStyle,
-                    showStops = showStops,
+                    mapExperience = mapExperience,
                     isExpanded = isFullscreen,
-                    onMapStyleToggle = {
-                        mapStyle = if (mapStyle == MapStyle.CINEMATIC) MapStyle.SATELLITE else MapStyle.CINEMATIC
-                    },
-                    onToggleStops = { showStops = !showStops },
+                    onCameraModeChange = onCameraModeChange,
+                    onMapStyleToggle = onMapStyleToggle,
+                    onCycleSceneMood = onCycleSceneMood,
+                    onToggleThreeD = onToggleThreeD,
+                    onToggleLabels = onToggleLabels,
+                    onToggleStops = onToggleStops,
                     onToggleFullscreen = { isFullscreen = !isFullscreen },
                     modifier = Modifier.fillMaxSize()
                 )

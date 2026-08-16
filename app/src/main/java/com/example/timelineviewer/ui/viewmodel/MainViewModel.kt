@@ -8,6 +8,9 @@ import com.example.timelineviewer.data.analysis.RelivePlaybackClock
 import com.example.timelineviewer.data.analysis.ReliveMoment
 import com.example.timelineviewer.data.analysis.ReliveMomentKind
 import com.example.timelineviewer.data.analysis.RelivePlanner
+import com.example.timelineviewer.data.analysis.ReplaySessionReducer
+import com.example.timelineviewer.data.analysis.ReplaySessionState
+import com.example.timelineviewer.data.analysis.ReplayStatus
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
@@ -17,6 +20,9 @@ import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.repository.JourneyRepository
 import com.example.timelineviewer.data.seed.SampleDataSeeder
 import com.example.timelineviewer.data.service.OfflineMapPackManager
+import com.example.timelineviewer.ui.map.JourneyCameraMode
+import com.example.timelineviewer.ui.map.MapExperienceReducer
+import com.example.timelineviewer.ui.map.MapExperienceState
 import com.mapbox.maps.Style
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,7 +51,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _activeOfflineMapRegion = MutableStateFlow<OfflineMapRegion?>(null)
     val activeOfflineMapRegion: StateFlow<OfflineMapRegion?> = _activeOfflineMapRegion.asStateFlow()
 
-    // Playback state
+    // Map and playback state. Legacy UI flows remain derived from these contracts until the
+    // journey-detail controls are migrated to consume the richer state directly.
+    private val _mapExperience = MutableStateFlow(MapExperienceReducer.forJourneyDetail())
+    val mapExperience: StateFlow<MapExperienceState> = _mapExperience.asStateFlow()
+
+    private val _replaySession = MutableStateFlow(ReplaySessionState())
+    val replaySession: StateFlow<ReplaySessionState> = _replaySession.asStateFlow()
     val isPlaying = MutableStateFlow(false)
     val isReliveMode = MutableStateFlow(false)
     private val _reliveStopMoment = MutableStateFlow<ReliveMoment?>(null)
@@ -54,7 +66,6 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     val playbackSpeed = MutableStateFlow(1f)
 
     private var playbackJob: Job? = null
-    private val visitedReliveStopIndexes = mutableSetOf<Int>()
     val journeys: StateFlow<List<Journey>>
 
     init {
@@ -131,19 +142,18 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             pausePlayback()
             isReliveMode.value = false
-            _reliveStopMoment.value = null
-            visitedReliveStopIndexes.clear()
+            _mapExperience.value = MapExperienceReducer.forJourneyDetail()
+            publishReplay(ReplaySessionState())
             _activeJourneyDetail.value = repository.getJourneyDetail(id)
             _activeOfflineMapRegion.value = repository.getOfflineMapRegion(id)
-            currentPointIndex.value = 0
         }
     }
 
     fun clearActiveJourney() {
         pausePlayback()
         isReliveMode.value = false
-        _reliveStopMoment.value = null
-        visitedReliveStopIndexes.clear()
+        _mapExperience.value = MapExperienceReducer.forJourneyDetail()
+        publishReplay(ReplaySessionState())
         _activeJourneyDetail.value = null
         _activeOfflineMapRegion.value = null
     }
@@ -221,84 +231,113 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         if (isPlaying.value) pausePlayback() else startPlayback()
     }
 
-    /** Starts a one-pass, full-screen replay at the first point and stops at the journey arrival. */
+    /** Starts a one-pass, full-screen replay at the first point and stops at journey arrival. */
     fun beginReliveMode() {
         val detail = activeJourneyDetail.value ?: return
         if (detail.points.isEmpty()) return
         isReliveMode.value = true
-        _reliveStopMoment.value = null
-        visitedReliveStopIndexes.clear()
-        currentPointIndex.value = 0
-        startPlayback()
+        _mapExperience.value = MapExperienceReducer.forRelive()
+        publishReplay(ReplaySessionReducer.begin(detail.points.size, playbackSpeed.value))
+        launchPlayback(detail)
     }
 
     fun endReliveMode() {
         pausePlayback()
         isReliveMode.value = false
-        _reliveStopMoment.value = null
-        visitedReliveStopIndexes.clear()
+        _mapExperience.value = MapExperienceReducer.forJourneyDetail()
+    }
+
+    fun selectMapCamera(mode: JourneyCameraMode) {
+        _mapExperience.value = MapExperienceReducer.selectCamera(_mapExperience.value, mode)
+    }
+
+    fun toggleMapBaseStyle() {
+        _mapExperience.value = MapExperienceReducer.toggleBaseStyle(_mapExperience.value)
+    }
+
+    fun cycleMapSceneMood() {
+        _mapExperience.value = MapExperienceReducer.nextMood(_mapExperience.value)
+    }
+
+    fun toggleMapThreeDObjects() {
+        _mapExperience.value = MapExperienceReducer.toggleThreeDObjects(_mapExperience.value)
+    }
+
+    fun toggleMapLabels() {
+        _mapExperience.value = MapExperienceReducer.toggleLabels(_mapExperience.value)
+    }
+
+    fun toggleMapStops() {
+        _mapExperience.value = MapExperienceReducer.toggleStops(_mapExperience.value)
     }
 
     private fun startPlayback() {
         val detail = activeJourneyDetail.value ?: return
         if (detail.points.isEmpty()) return
-        val lastIndex = detail.points.lastIndex
-        if (isReliveMode.value && currentPointIndex.value >= lastIndex) currentPointIndex.value = 0
-        if (isReliveMode.value) _reliveStopMoment.value = null
-        val stopMomentsByPointIndex = if (isReliveMode.value) {
+        val session = when (_replaySession.value.status) {
+            ReplayStatus.IDLE -> ReplaySessionReducer.begin(detail.points.size, playbackSpeed.value)
+            else -> ReplaySessionReducer.resume(_replaySession.value)
+        }
+        publishReplay(session)
+        launchPlayback(detail)
+    }
+
+    private fun launchPlayback(detail: JourneyDetailData) {
+        val highlightByPointIndex = if (isReliveMode.value) {
             RelivePlanner.moments(detail)
                 .filter { it.kind == ReliveMomentKind.HIGHLIGHT }
                 .associateBy { it.pointIndex }
         } else {
             emptyMap()
         }
-        isPlaying.value = true
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
-            while (isPlaying.value) {
-                val total = detail.points.size
-                val current = currentPointIndex.value
-                val next = current + 1
-                if (next >= total) {
-                    currentPointIndex.value = if (isReliveMode.value) total - 1 else 0
-                    if (isReliveMode.value) isPlaying.value = false
+            while (_replaySession.value.status == ReplayStatus.PLAYING) {
+                val before = _replaySession.value
+                val nextIndex = (before.currentPointIndex + 1).coerceAtMost(detail.points.lastIndex)
+                val nextSession = ReplaySessionReducer.advance(
+                    state = before,
+                    pointCount = detail.points.size,
+                    highlightAtNextPoint = highlightByPointIndex[nextIndex]
+                )
+                publishReplay(nextSession)
+                if (nextSession.status != ReplayStatus.PLAYING) break
+                val replayDelay = if (isReliveMode.value) {
+                    RelivePlaybackClock.delayForNextPoint(
+                        currentTimestamp = detail.points[before.currentPointIndex].timestamp,
+                        nextTimestamp = detail.points[nextSession.currentPointIndex].timestamp,
+                        playbackSpeed = nextSession.playbackSpeed
+                    )
                 } else {
-                    currentPointIndex.value = next
-                    val stopMoment = stopMomentsByPointIndex[next]
-                    if (stopMoment != null && visitedReliveStopIndexes.add(next)) {
-                        _reliveStopMoment.value = stopMoment
-                        isPlaying.value = false
-                    }
-                    val replayDelay = if (isReliveMode.value) {
-                        RelivePlaybackClock.delayForNextPoint(
-                            currentTimestamp = detail.points[current].timestamp,
-                            nextTimestamp = detail.points[next].timestamp,
-                            playbackSpeed = playbackSpeed.value
-                        )
-                    } else {
-                        (200 / playbackSpeed.value).toLong().coerceAtLeast(20L)
-                    }
-                    delay(replayDelay)
+                    (200 / nextSession.playbackSpeed).toLong().coerceAtLeast(20L)
                 }
+                delay(replayDelay)
             }
         }
     }
 
     fun pausePlayback() {
-        isPlaying.value = false
+        publishReplay(ReplaySessionReducer.pause(_replaySession.value))
         playbackJob?.cancel()
         playbackJob = null
     }
 
     fun seekToIndex(index: Int) {
         val total = activeJourneyDetail.value?.points?.size ?: 1
-        currentPointIndex.value = index.coerceIn(0, total - 1)
-        if (isReliveMode.value) _reliveStopMoment.value = null
+        publishReplay(ReplaySessionReducer.seek(_replaySession.value, total, index))
     }
 
     fun setSpeed(speed: Float) {
-        playbackSpeed.value = speed
+        publishReplay(ReplaySessionReducer.setSpeed(_replaySession.value, speed))
         if (isPlaying.value) startPlayback()
+    }
+
+    private fun publishReplay(session: ReplaySessionState) {
+        _replaySession.value = session
+        currentPointIndex.value = session.currentPointIndex
+        playbackSpeed.value = session.playbackSpeed
+        isPlaying.value = session.status == ReplayStatus.PLAYING
+        _reliveStopMoment.value = session.activeMoment.takeIf { session.status == ReplayStatus.PAUSED_AT_STOP }
     }
 
     suspend fun importTimelineJson(jsonString: String, title: String): Boolean =

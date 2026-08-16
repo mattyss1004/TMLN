@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
             val activeOfflineMapRegion by viewModel.activeOfflineMapRegion.collectAsStateWithLifecycle()
             val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
             val isReliveMode by viewModel.isReliveMode.collectAsStateWithLifecycle()
+            val mapExperience by viewModel.mapExperience.collectAsStateWithLifecycle()
             val reliveStopMoment by viewModel.reliveStopMoment.collectAsStateWithLifecycle()
             val currentPointIndex by viewModel.currentPointIndex.collectAsStateWithLifecycle()
             val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
@@ -49,6 +50,13 @@ class MainActivity : ComponentActivity() {
                                 currentPointIndex = currentPointIndex,
                                 playbackSpeed = playbackSpeed,
                                 stopMoment = reliveStopMoment,
+                                mapExperience = mapExperience,
+                                onCameraModeChange = { viewModel.selectMapCamera(it) },
+                                onMapStyleToggle = { viewModel.toggleMapBaseStyle() },
+                                onCycleSceneMood = { viewModel.cycleMapSceneMood() },
+                                onToggleThreeD = { viewModel.toggleMapThreeDObjects() },
+                                onToggleLabels = { viewModel.toggleMapLabels() },
+                                onToggleStops = { viewModel.toggleMapStops() },
                                 onPlayPauseToggle = { viewModel.togglePlayPause() },
                                 onSeekToIndex = { viewModel.seekToIndex(it) },
                                 onSpeedChange = { viewModel.setSpeed(it) },
@@ -61,6 +69,13 @@ class MainActivity : ComponentActivity() {
                                 currentPointIndex = currentPointIndex,
                                 playbackSpeed = playbackSpeed,
                                 offlineMapRegion = activeOfflineMapRegion,
+                                mapExperience = mapExperience,
+                                onCameraModeChange = { viewModel.selectMapCamera(it) },
+                                onMapStyleToggle = { viewModel.toggleMapBaseStyle() },
+                                onCycleSceneMood = { viewModel.cycleMapSceneMood() },
+                                onToggleThreeD = { viewModel.toggleMapThreeDObjects() },
+                                onToggleLabels = { viewModel.toggleMapLabels() },
+                                onToggleStops = { viewModel.toggleMapStops() },
                                 onBackClick = { viewModel.clearActiveJourney() },
                                 onPlayPauseToggle = { viewModel.togglePlayPause() },
                                 onSeekToIndex = { viewModel.seekToIndex(it) },

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +51,9 @@ import com.example.timelineviewer.data.analysis.ReliveMomentKind
 import com.example.timelineviewer.data.analysis.RelivePlanner
 import com.example.timelineviewer.data.model.JourneyDetailData
 import com.example.timelineviewer.ui.components.InteractiveMapView
-import com.example.timelineviewer.ui.components.MapStyle
+import com.example.timelineviewer.ui.map.JourneyBaseStyle
+import com.example.timelineviewer.ui.map.JourneyCameraMode
+import com.example.timelineviewer.ui.map.MapExperienceState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -65,6 +68,13 @@ fun ReliveModeScreen(
     currentPointIndex: Int,
     playbackSpeed: Float,
     stopMoment: ReliveMoment?,
+    mapExperience: MapExperienceState,
+    onCameraModeChange: (JourneyCameraMode) -> Unit,
+    onMapStyleToggle: () -> Unit,
+    onCycleSceneMood: () -> Unit,
+    onToggleThreeD: () -> Unit,
+    onToggleLabels: () -> Unit,
+    onToggleStops: () -> Unit,
     onPlayPauseToggle: () -> Unit,
     onSeekToIndex: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
@@ -95,12 +105,16 @@ fun ReliveModeScreen(
             currentPointIndex = currentPointIndex,
             isPlaying = isPlaying,
             playedPointIndex = currentPointIndex,
-            mapStyle = MapStyle.CINEMATIC,
-            showStops = false,
+            mapExperience = mapExperience,
             isExpanded = true,
-            preferFollowCamera = true,
             showControls = false,
             showActiveBadge = false,
+            onCameraModeChange = onCameraModeChange,
+            onMapStyleToggle = onMapStyleToggle,
+            onCycleSceneMood = onCycleSceneMood,
+            onToggleThreeD = onToggleThreeD,
+            onToggleLabels = onToggleLabels,
+            onToggleStops = onToggleStops,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -148,6 +162,19 @@ fun ReliveModeScreen(
                 }
             }
         }
+
+        ReliveMapControlDeck(
+            mapExperience = mapExperience,
+            onCameraModeChange = onCameraModeChange,
+            onMapStyleToggle = onMapStyleToggle,
+            onCycleSceneMood = onCycleSceneMood,
+            onToggleThreeD = onToggleThreeD,
+            onToggleLabels = onToggleLabels,
+            onToggleStops = onToggleStops,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 86.dp, start = 12.dp, end = 12.dp)
+        )
 
         if (stopMoment != null) {
             Surface(
@@ -298,6 +325,81 @@ fun ReliveModeScreen(
                         }
                     }
                     RelivePaceRow(playbackSpeed, onSpeedChange)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReliveMapControlDeck(
+    mapExperience: MapExperienceState,
+    onCameraModeChange: (JourneyCameraMode) -> Unit,
+    onMapStyleToggle: () -> Unit,
+    onCycleSceneMood: () -> Unit,
+    onToggleThreeD: () -> Unit,
+    onToggleLabels: () -> Unit,
+    onToggleStops: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+        shadowElevation = 8.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                JourneyCameraMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = mapExperience.cameraMode == mode,
+                        onClick = { onCameraModeChange(mode) },
+                        label = { Text(mode.label, style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(horizontal = 1.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = mapExperience.baseStyle == JourneyBaseStyle.SATELLITE,
+                        onClick = onMapStyleToggle,
+                        label = { Text(if (mapExperience.baseStyle == JourneyBaseStyle.SATELLITE) "Satellite" else "Map", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = mapExperience.showThreeDObjects,
+                        onClick = onToggleThreeD,
+                        label = { Text("3D", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = mapExperience.showStops,
+                        onClick = onToggleStops,
+                        label = { Text("Stops", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = mapExperience.showLabels,
+                        onClick = onToggleLabels,
+                        label = { Text("Labels", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = mapExperience.sceneMood != com.example.timelineviewer.ui.map.JourneySceneMood.DAY,
+                        onClick = onCycleSceneMood,
+                        label = { Text(mapExperience.sceneMood.label, style = MaterialTheme.typography.labelSmall) }
+                    )
                 }
             }
         }
