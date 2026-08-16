@@ -9,9 +9,26 @@ import org.junit.Test
 class CinematicCameraDirectorTest {
 
     private val route = listOf(
-        RoutePoint(latitude = 50.087, longitude = 14.420, timestamp = 1_000L, bearing = 10f, sequenceOrder = 0),
-        RoutePoint(latitude = 50.090, longitude = 14.438, timestamp = 2_000L, bearing = 350f, sequenceOrder = 1),
-        RoutePoint(latitude = 50.094, longitude = 14.452, timestamp = 3_000L, bearing = 35f, sequenceOrder = 2)
+        point(latitude = 50.087, longitude = 14.420, timestamp = 1_000L, bearing = 10f, sequenceOrder = 0),
+        point(latitude = 50.090, longitude = 14.438, timestamp = 2_000L, bearing = 350f, sequenceOrder = 1),
+        point(latitude = 50.094, longitude = 14.452, timestamp = 3_000L, bearing = 35f, sequenceOrder = 2)
+    )
+
+    private fun point(
+        latitude: Double,
+        longitude: Double,
+        timestamp: Long,
+        bearing: Float,
+        sequenceOrder: Int
+    ) = RoutePoint(
+        id = 0,
+        journeyId = 1,
+        latitude = latitude,
+        longitude = longitude,
+        timestamp = timestamp,
+        speedKmh = 0.0,
+        bearing = bearing,
+        sequenceOrder = sequenceOrder
     )
 
     @Test
