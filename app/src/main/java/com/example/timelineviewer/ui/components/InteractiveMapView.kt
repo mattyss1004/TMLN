@@ -55,6 +55,9 @@ fun InteractiveMapView(
     mapStyle: MapStyle = MapStyle.CINEMATIC,
     showStops: Boolean = true,
     isExpanded: Boolean = false,
+    preferFollowCamera: Boolean = false,
+    showControls: Boolean = true,
+    showActiveBadge: Boolean = true,
     onMapStyleToggle: () -> Unit = {},
     onToggleStops: () -> Unit = {},
     onToggleFullscreen: () -> Unit = {},
@@ -83,7 +86,9 @@ fun InteractiveMapView(
         }
     }
 
-    var cameraMode by remember { mutableStateOf(CameraMode.OVERVIEW) }
+    var cameraMode by remember(preferFollowCamera) {
+        mutableStateOf(if (preferFollowCamera) CameraMode.FOLLOW else CameraMode.OVERVIEW)
+    }
     val activePoint = points[currentPointIndex.coerceIn(0, points.lastIndex)]
 
     // During playback, Follow creates the cinematic "traveller camera" effect. The user can
@@ -166,61 +171,65 @@ fun InteractiveMapView(
             }
         }
 
-        MapControlStack(
-            mapStyle = mapStyle,
-            showStops = showStops,
-            cameraMode = cameraMode,
-            isExpanded = isExpanded,
-            onMapStyleToggle = onMapStyleToggle,
-            onToggleStops = onToggleStops,
-            onOverview = {
-                cameraMode = CameraMode.OVERVIEW
-                mapViewportState.easeTo(
-                    cameraOptions {
-                        center(routeCenter)
-                        zoom(overviewZoom)
-                        pitch(52.0)
-                        bearing(0.0)
-                    }
-                )
-            },
-            onFollow = {
-                cameraMode = CameraMode.FOLLOW
-                mapViewportState.easeTo(
-                    cameraOptions {
-                        center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                    zoom(15.8)
-                    pitch(58.0)
-                        bearing(activePoint.bearing.toDouble())
-                    }
-                )
-            },
-            onOrbit = {
-                cameraMode = CameraMode.ORBIT
-                mapViewportState.easeTo(
-                    cameraOptions {
-                        center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
-                        zoom(15.0)
-                        pitch(58.0)
-                        bearing((activePoint.bearing + 55f).toDouble())
-                    }
-                )
-            },
-            onToggleFullscreen = onToggleFullscreen,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(12.dp)
-        )
+        if (showControls) {
+            MapControlStack(
+                mapStyle = mapStyle,
+                showStops = showStops,
+                cameraMode = cameraMode,
+                isExpanded = isExpanded,
+                onMapStyleToggle = onMapStyleToggle,
+                onToggleStops = onToggleStops,
+                onOverview = {
+                    cameraMode = CameraMode.OVERVIEW
+                    mapViewportState.easeTo(
+                        cameraOptions {
+                            center(routeCenter)
+                            zoom(overviewZoom)
+                            pitch(52.0)
+                            bearing(0.0)
+                        }
+                    )
+                },
+                onFollow = {
+                    cameraMode = CameraMode.FOLLOW
+                    mapViewportState.easeTo(
+                        cameraOptions {
+                            center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
+                            zoom(15.8)
+                            pitch(58.0)
+                            bearing(activePoint.bearing.toDouble())
+                        }
+                    )
+                },
+                onOrbit = {
+                    cameraMode = CameraMode.ORBIT
+                    mapViewportState.easeTo(
+                        cameraOptions {
+                            center(Point.fromLngLat(activePoint.longitude, activePoint.latitude))
+                            zoom(15.0)
+                            pitch(58.0)
+                            bearing((activePoint.bearing + 55f).toDouble())
+                        }
+                    )
+                },
+                onToggleFullscreen = onToggleFullscreen,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+            )
+        }
 
-        ActiveLocationBadge(
-            activePoint = activePoint,
-            currentPointIndex = currentPointIndex,
-            pointCount = points.size,
-            cameraMode = cameraMode,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(12.dp)
-        )
+        if (showActiveBadge) {
+            ActiveLocationBadge(
+                activePoint = activePoint,
+                currentPointIndex = currentPointIndex,
+                pointCount = points.size,
+                cameraMode = cameraMode,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+            )
+        }
     }
 }
 

@@ -43,6 +43,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     // Playback state
     val isPlaying = MutableStateFlow(false)
+    val isReliveMode = MutableStateFlow(false)
     val currentPointIndex = MutableStateFlow(0)
     val playbackSpeed = MutableStateFlow(1f)
 
@@ -122,6 +123,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun loadJourneyDetail(id: Long) {
         viewModelScope.launch {
             pausePlayback()
+            isReliveMode.value = false
             _activeJourneyDetail.value = repository.getJourneyDetail(id)
             _activeOfflineMapRegion.value = repository.getOfflineMapRegion(id)
             currentPointIndex.value = 0
@@ -130,6 +132,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun clearActiveJourney() {
         pausePlayback()
+        isReliveMode.value = false
         _activeJourneyDetail.value = null
         _activeOfflineMapRegion.value = null
     }
@@ -207,15 +210,37 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         if (isPlaying.value) pausePlayback() else startPlayback()
     }
 
+    /** Starts a one-pass, full-screen replay at the first point and stops at the journey arrival. */
+    fun beginReliveMode() {
+        val detail = activeJourneyDetail.value ?: return
+        if (detail.points.isEmpty()) return
+        isReliveMode.value = true
+        currentPointIndex.value = 0
+        startPlayback()
+    }
+
+    fun endReliveMode() {
+        pausePlayback()
+        isReliveMode.value = false
+    }
+
     private fun startPlayback() {
         val detail = activeJourneyDetail.value ?: return
         if (detail.points.isEmpty()) return
+        val lastIndex = detail.points.lastIndex
+        if (isReliveMode.value && currentPointIndex.value >= lastIndex) currentPointIndex.value = 0
         isPlaying.value = true
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
             while (isPlaying.value) {
                 val total = detail.points.size
-                currentPointIndex.value = (currentPointIndex.value + 1).let { if (it >= total) 0 else it }
+                val next = currentPointIndex.value + 1
+                if (next >= total) {
+                    currentPointIndex.value = if (isReliveMode.value) total - 1 else 0
+                    if (isReliveMode.value) isPlaying.value = false
+                } else {
+                    currentPointIndex.value = next
+                }
                 delay((200 / playbackSpeed.value).toLong().coerceAtLeast(20L))
             }
         }

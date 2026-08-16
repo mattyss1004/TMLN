@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.timelineviewer.ui.screens.HomeScreen
 import com.example.timelineviewer.ui.screens.JourneyDetailScreen
+import com.example.timelineviewer.ui.screens.ReliveModeScreen
 import com.example.timelineviewer.ui.theme.TimelineViewerTheme
 import com.example.timelineviewer.ui.viewmodel.MainViewModel
 
@@ -33,28 +34,43 @@ class MainActivity : ComponentActivity() {
             val activeDetail by viewModel.activeJourneyDetail.collectAsStateWithLifecycle()
             val activeOfflineMapRegion by viewModel.activeOfflineMapRegion.collectAsStateWithLifecycle()
             val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
+            val isReliveMode by viewModel.isReliveMode.collectAsStateWithLifecycle()
             val currentPointIndex by viewModel.currentPointIndex.collectAsStateWithLifecycle()
             val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
 
             TimelineViewerTheme(darkTheme = isDarkTheme, dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     if (activeDetail != null) {
-                        JourneyDetailScreen(
-                            detail = activeDetail!!,
-                            isPlaying = isPlaying,
-                            currentPointIndex = currentPointIndex,
-                            playbackSpeed = playbackSpeed,
-                            offlineMapRegion = activeOfflineMapRegion,
-                            onBackClick = { viewModel.clearActiveJourney() },
-                            onPlayPauseToggle = { viewModel.togglePlayPause() },
-                            onSeekToIndex = { viewModel.seekToIndex(it) },
-                            onSpeedChange = { viewModel.setSpeed(it) },
-                            onSaveJourneyMetadata = { title, description ->
-                                viewModel.updateActiveJourneyMetadata(title, description)
-                            },
-                            onDownloadOffline = { viewModel.downloadActiveJourneyForOfflineUse() },
-                            onRemoveOffline = { viewModel.removeActiveJourneyOfflinePack() }
-                        )
+                        if (isReliveMode) {
+                            ReliveModeScreen(
+                                detail = activeDetail!!,
+                                isPlaying = isPlaying,
+                                currentPointIndex = currentPointIndex,
+                                playbackSpeed = playbackSpeed,
+                                onPlayPauseToggle = { viewModel.togglePlayPause() },
+                                onSeekToIndex = { viewModel.seekToIndex(it) },
+                                onSpeedChange = { viewModel.setSpeed(it) },
+                                onExit = { viewModel.endReliveMode() }
+                            )
+                        } else {
+                            JourneyDetailScreen(
+                                detail = activeDetail!!,
+                                isPlaying = isPlaying,
+                                currentPointIndex = currentPointIndex,
+                                playbackSpeed = playbackSpeed,
+                                offlineMapRegion = activeOfflineMapRegion,
+                                onBackClick = { viewModel.clearActiveJourney() },
+                                onPlayPauseToggle = { viewModel.togglePlayPause() },
+                                onSeekToIndex = { viewModel.seekToIndex(it) },
+                                onSpeedChange = { viewModel.setSpeed(it) },
+                                onOpenReliveMode = { viewModel.beginReliveMode() },
+                                onSaveJourneyMetadata = { title, description ->
+                                    viewModel.updateActiveJourneyMetadata(title, description)
+                                },
+                                onDownloadOffline = { viewModel.downloadActiveJourneyForOfflineUse() },
+                                onRemoveOffline = { viewModel.removeActiveJourneyOfflinePack() }
+                            )
+                        }
                     } else {
                         HomeScreen(
                             journeys = journeys,

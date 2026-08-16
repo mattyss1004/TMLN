@@ -42,6 +42,7 @@ fun JourneyDetailScreen(
     onPlayPauseToggle: () -> Unit,
     onSeekToIndex: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
+    onOpenReliveMode: () -> Unit,
     onSaveJourneyMetadata: suspend (String, String) -> Boolean,
     onDownloadOffline: () -> Unit,
     onRemoveOffline: () -> Unit,
@@ -86,6 +87,12 @@ fun JourneyDetailScreen(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = onOpenReliveMode,
+                            modifier = Modifier.testTag("open_relive_mode")
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Open Relive Mode")
+                        }
                         IconButton(
                             onClick = { showJourneyEditor = true },
                             modifier = Modifier.testTag("open_journey_editor")
