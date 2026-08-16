@@ -502,7 +502,17 @@ object TimelineParser {
         if (points.size < 3) return points
         val anchorIndexes = buildList {
             add(0)
-            points.forEachIndexed { index, point -> if (point.isPlaceVisit && index in 1 until points.lastIndex) add(index) }
+            points.forEachIndexed { index, point ->
+                if (index !in 1 until points.lastIndex) return@forEachIndexed
+                val previousMode = points[index - 1].modeOverride
+                val nextMode = points[index + 1].modeOverride
+                // Keep visit anchors and explicit transport transitions. Without this, a geometric
+                // simplification can remove the final activity point immediately before a visit
+                // and silently turn a known walking/driving segment into UNKNOWN.
+                if (point.isPlaceVisit || point.modeOverride != previousMode || point.modeOverride != nextMode) {
+                    add(index)
+                }
+            }
             add(points.lastIndex)
         }.distinct().sorted()
 
