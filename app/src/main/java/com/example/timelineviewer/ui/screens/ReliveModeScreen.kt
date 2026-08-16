@@ -64,6 +64,7 @@ fun ReliveModeScreen(
     isPlaying: Boolean,
     currentPointIndex: Int,
     playbackSpeed: Float,
+    stopMoment: ReliveMoment?,
     onPlayPauseToggle: () -> Unit,
     onSeekToIndex: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
@@ -93,6 +94,7 @@ fun ReliveModeScreen(
             segments = detail.segments,
             currentPointIndex = currentPointIndex,
             isPlaying = isPlaying,
+            playedPointIndex = currentPointIndex,
             mapStyle = MapStyle.CINEMATIC,
             showStops = false,
             isExpanded = true,
@@ -143,6 +145,58 @@ fun ReliveModeScreen(
                     modifier = Modifier.testTag("close_relive_mode")
                 ) {
                     Icon(Icons.Default.Close, contentDescription = "Close Relive Mode")
+                }
+            }
+        }
+
+        if (stopMoment != null) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                shadowElevation = 14.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.padding(8.dp).size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Text(
+                        text = stopMoment.title,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stopMoment.subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Replay is paused here. Continue when you are ready to move on.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = onPlayPauseToggle,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("continue_relive_after_stop")
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Continue journey")
+                    }
                 }
             }
         }

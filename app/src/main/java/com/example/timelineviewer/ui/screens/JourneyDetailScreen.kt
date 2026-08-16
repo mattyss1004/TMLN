@@ -174,6 +174,10 @@ fun JourneyDetailScreen(
                     }
 
                     item {
+                        ReliveModeLaunchCard(onOpenReliveMode)
+                    }
+
+                    item {
                         OfflineMapPackCard(
                             region = offlineMapRegion,
                             onDownload = onDownloadOffline,
@@ -213,6 +217,50 @@ fun JourneyDetailScreen(
             journeyTitle = detail.journey.title,
             onDismiss = { showVideoExportDialog = false }
         )
+    }
+}
+
+@Composable
+private fun ReliveModeLaunchCard(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("relive_mode_card")
+    ) {
+        Row(
+            modifier = Modifier.padding(15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.padding(9.dp).size(20.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Relive this journey",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = "Watch the route draw itself, pause at real stops, then continue the story.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f)
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Open Relive Mode",
+                tint = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
     }
 }
 

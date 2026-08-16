@@ -35,6 +35,7 @@ class MainActivity : ComponentActivity() {
             val activeOfflineMapRegion by viewModel.activeOfflineMapRegion.collectAsStateWithLifecycle()
             val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
             val isReliveMode by viewModel.isReliveMode.collectAsStateWithLifecycle()
+            val reliveStopMoment by viewModel.reliveStopMoment.collectAsStateWithLifecycle()
             val currentPointIndex by viewModel.currentPointIndex.collectAsStateWithLifecycle()
             val playbackSpeed by viewModel.playbackSpeed.collectAsStateWithLifecycle()
 
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
                                 isPlaying = isPlaying,
                                 currentPointIndex = currentPointIndex,
                                 playbackSpeed = playbackSpeed,
+                                stopMoment = reliveStopMoment,
                                 onPlayPauseToggle = { viewModel.togglePlayPause() },
                                 onSeekToIndex = { viewModel.seekToIndex(it) },
                                 onSpeedChange = { viewModel.setSpeed(it) },

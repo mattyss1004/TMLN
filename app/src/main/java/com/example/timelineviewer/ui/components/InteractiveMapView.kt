@@ -52,6 +52,7 @@ fun InteractiveMapView(
     segments: List<TransportSegment>,
     currentPointIndex: Int = 0,
     isPlaying: Boolean = false,
+    playedPointIndex: Int? = null,
     mapStyle: MapStyle = MapStyle.CINEMATIC,
     showStops: Boolean = true,
     isExpanded: Boolean = false,
@@ -145,7 +146,8 @@ fun InteractiveMapView(
         ) {
             RouteAnnotations(
                 points = points,
-                segments = segments
+                segments = segments,
+                playedPointIndex = playedPointIndex
             )
 
             if (showStops) {
@@ -243,16 +245,34 @@ private data class PreparedRouteSegment(
 @Composable
 private fun RouteAnnotations(
     points: List<RoutePoint>,
-    segments: List<TransportSegment>
+    segments: List<TransportSegment>,
+    playedPointIndex: Int?
 ) {
-    // Route geometry is transformed once per loaded journey, rather than filtering and converting
-    // all stored points again whenever a playback frame recomposes the map.
+    // Route geometry is transformed once per loaded journey. During a real replay, the completed
+    // portion is drawn above a quiet route preview so progress is visible rather than implied.
     val routeSegments = remember(points, segments) { prepareRouteSegments(points, segments) }
+    val allRoutePoints = remember(points) {
+        points.map { Point.fromLngLat(it.longitude, it.latitude) }
+    }
 
     routeSegments.forEach { segment ->
         PolylineAnnotation(points = segment.points) {
             lineColor = segment.color
-            lineWidth = 6.0
+            lineWidth = if (playedPointIndex == null) 6.0 else 4.0
+            lineOpacity = if (playedPointIndex == null) 1.0 else 0.24
+        }
+    }
+
+    if (playedPointIndex != null) {
+        val travelled = remember(allRoutePoints, playedPointIndex) {
+            visibleRouteProgress(allRoutePoints, playedPointIndex)
+        }
+        if (travelled.size >= 2) {
+            PolylineAnnotation(points = travelled) {
+                lineColor = Color(0xFFF59E0B)
+                lineWidth = 7.0
+                lineOpacity = 0.96
+            }
         }
     }
 }
@@ -284,6 +304,14 @@ private fun List<Point>.thinForRendering(maxPoints: Int): List<Point> {
     if (size <= maxPoints) return this
     val stride = (size - 1).toDouble() / (maxPoints - 1).toDouble()
     return List(maxPoints) { index -> this[(index * stride).toInt().coerceAtMost(lastIndex)] }
+}
+
+private const val MAX_PLAYED_ROUTE_POINTS = 800
+
+private fun visibleRouteProgress(points: List<Point>, playedPointIndex: Int): List<Point> {
+    if (points.isEmpty()) return emptyList()
+    val inclusiveEnd = playedPointIndex.coerceIn(0, points.lastIndex)
+    return points.subList(0, inclusiveEnd + 1).thinForRendering(MAX_PLAYED_ROUTE_POINTS)
 }
 
 @Composable

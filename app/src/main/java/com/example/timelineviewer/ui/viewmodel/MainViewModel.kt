@@ -4,6 +4,10 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.timelineviewer.data.analysis.RelivePlaybackClock
+import com.example.timelineviewer.data.analysis.ReliveMoment
+import com.example.timelineviewer.data.analysis.ReliveMomentKind
+import com.example.timelineviewer.data.analysis.RelivePlanner
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
@@ -44,10 +48,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // Playback state
     val isPlaying = MutableStateFlow(false)
     val isReliveMode = MutableStateFlow(false)
+    private val _reliveStopMoment = MutableStateFlow<ReliveMoment?>(null)
+    val reliveStopMoment: StateFlow<ReliveMoment?> = _reliveStopMoment.asStateFlow()
     val currentPointIndex = MutableStateFlow(0)
     val playbackSpeed = MutableStateFlow(1f)
 
     private var playbackJob: Job? = null
+    private val visitedReliveStopIndexes = mutableSetOf<Int>()
     val journeys: StateFlow<List<Journey>>
 
     init {
@@ -124,6 +131,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             pausePlayback()
             isReliveMode.value = false
+            _reliveStopMoment.value = null
+            visitedReliveStopIndexes.clear()
             _activeJourneyDetail.value = repository.getJourneyDetail(id)
             _activeOfflineMapRegion.value = repository.getOfflineMapRegion(id)
             currentPointIndex.value = 0
@@ -133,6 +142,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun clearActiveJourney() {
         pausePlayback()
         isReliveMode.value = false
+        _reliveStopMoment.value = null
+        visitedReliveStopIndexes.clear()
         _activeJourneyDetail.value = null
         _activeOfflineMapRegion.value = null
     }
@@ -215,6 +226,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val detail = activeJourneyDetail.value ?: return
         if (detail.points.isEmpty()) return
         isReliveMode.value = true
+        _reliveStopMoment.value = null
+        visitedReliveStopIndexes.clear()
         currentPointIndex.value = 0
         startPlayback()
     }
@@ -222,6 +235,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun endReliveMode() {
         pausePlayback()
         isReliveMode.value = false
+        _reliveStopMoment.value = null
+        visitedReliveStopIndexes.clear()
     }
 
     private fun startPlayback() {
@@ -229,19 +244,42 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         if (detail.points.isEmpty()) return
         val lastIndex = detail.points.lastIndex
         if (isReliveMode.value && currentPointIndex.value >= lastIndex) currentPointIndex.value = 0
+        if (isReliveMode.value) _reliveStopMoment.value = null
+        val stopMomentsByPointIndex = if (isReliveMode.value) {
+            RelivePlanner.moments(detail)
+                .filter { it.kind == ReliveMomentKind.HIGHLIGHT }
+                .associateBy { it.pointIndex }
+        } else {
+            emptyMap()
+        }
         isPlaying.value = true
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
             while (isPlaying.value) {
                 val total = detail.points.size
-                val next = currentPointIndex.value + 1
+                val current = currentPointIndex.value
+                val next = current + 1
                 if (next >= total) {
                     currentPointIndex.value = if (isReliveMode.value) total - 1 else 0
                     if (isReliveMode.value) isPlaying.value = false
                 } else {
                     currentPointIndex.value = next
+                    val stopMoment = stopMomentsByPointIndex[next]
+                    if (stopMoment != null && visitedReliveStopIndexes.add(next)) {
+                        _reliveStopMoment.value = stopMoment
+                        isPlaying.value = false
+                    }
+                    val replayDelay = if (isReliveMode.value) {
+                        RelivePlaybackClock.delayForNextPoint(
+                            currentTimestamp = detail.points[current].timestamp,
+                            nextTimestamp = detail.points[next].timestamp,
+                            playbackSpeed = playbackSpeed.value
+                        )
+                    } else {
+                        (200 / playbackSpeed.value).toLong().coerceAtLeast(20L)
+                    }
+                    delay(replayDelay)
                 }
-                delay((200 / playbackSpeed.value).toLong().coerceAtLeast(20L))
             }
         }
     }
@@ -255,6 +293,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun seekToIndex(index: Int) {
         val total = activeJourneyDetail.value?.points?.size ?: 1
         currentPointIndex.value = index.coerceIn(0, total - 1)
+        if (isReliveMode.value) _reliveStopMoment.value = null
     }
 
     fun setSpeed(speed: Float) {
