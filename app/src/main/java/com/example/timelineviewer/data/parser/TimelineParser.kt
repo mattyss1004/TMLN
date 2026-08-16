@@ -629,7 +629,12 @@ object TimelineParser {
             if (index == 0) {
                 currentMode = detectedMode
             } else {
-                modeDurations[detectedMode] = (modeDurations[detectedMode] ?: 0L) + intervalSeconds
+                // A place visit represents stationary dwell time, not a transport leg. Counting
+                // it as UNKNOWN can incorrectly make a long café or museum pause dominate an
+                // otherwise clearly walking, cycling, driving, or transit journey.
+                if (!current.isPlaceVisit && distanceFromPrevious > 0.001) {
+                    modeDurations[detectedMode] = (modeDurations[detectedMode] ?: 0L) + intervalSeconds
+                }
                 if (detectedMode != currentMode) {
                     addSegment(points, currentSegmentStart, index - 1, currentMode, segments)
                     currentSegmentStart = index
