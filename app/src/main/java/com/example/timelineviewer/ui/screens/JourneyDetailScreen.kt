@@ -1,5 +1,8 @@
 package com.example.timelineviewer.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,6 +55,9 @@ fun JourneyDetailScreen(
     onSeekToIndex: (Int) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onOpenReliveMode: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onSetJourneyCover: suspend (android.net.Uri) -> Boolean,
+    onRemoveJourneyCover: () -> Unit,
     onSaveJourneyMetadata: suspend (String, String) -> Boolean,
     onDownloadOffline: () -> Unit,
     onRemoveOffline: () -> Unit,
@@ -60,6 +66,21 @@ fun JourneyDetailScreen(
     var isFullscreen by remember { mutableStateOf(false) }
     var showVideoExportDialog by remember { mutableStateOf(false) }
     var showJourneyEditor by remember { mutableStateOf(false) }
+    val editorScope = rememberCoroutineScope()
+    var coverSaveMessage by remember { mutableStateOf<String?>(null) }
+    val coverPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            editorScope.launch {
+                coverSaveMessage = if (onSetJourneyCover(uri)) {
+                    "Cover saved privately on this device"
+                } else {
+                    "Cover could not be saved"
+                }
+            }
+        }
+    }
 
     val currentPoint = remember(detail.points, currentPointIndex) {
         detail.points.getOrNull(currentPointIndex.coerceIn(0, (detail.points.size - 1).coerceAtLeast(0)))
@@ -99,6 +120,24 @@ fun JourneyDetailScreen(
                             modifier = Modifier.testTag("open_relive_mode")
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = "Open Relive Mode")
+                        }
+                        IconButton(
+                            onClick = onToggleFavorite,
+                            modifier = Modifier.testTag("toggle_journey_favorite")
+                        ) {
+                            Icon(
+                                imageVector = if (detail.journey.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = if (detail.journey.isFavorite) "Remove from favorites" else "Add to favorites"
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                coverSaveMessage = null
+                                coverPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            },
+                            modifier = Modifier.testTag("pick_journey_cover")
+                        ) {
+                            Icon(Icons.Default.AddPhotoAlternate, contentDescription = "Choose journey cover photo")
                         }
                         IconButton(
                             onClick = { showJourneyEditor = true },
@@ -159,6 +198,32 @@ fun JourneyDetailScreen(
             }
 
             if (!isFullscreen) {
+                coverSaveMessage?.let { message ->
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (detail.journey.coverPhotoPath != null) {
+                                TextButton(onClick = {
+                                    onRemoveJourneyCover()
+                                    coverSaveMessage = "Cover removed"
+                                }) { Text("Remove") }
+                            }
+                        }
+                    }
+                }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()

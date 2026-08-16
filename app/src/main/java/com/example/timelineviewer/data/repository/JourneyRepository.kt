@@ -44,6 +44,20 @@ class JourneyRepository(private val database: AppDatabase) {
         ) == 1
     }
 
+    /** Marks a journey as a user-curated memory without rewriting any imported Timeline data. */
+    suspend fun updateJourneyFavorite(id: Long, isFavorite: Boolean): Boolean = database.withTransaction {
+        database.journeyDao().updateJourneyFavorite(id, isFavorite) == 1
+    }
+
+    /** Persists only a private app-storage path, never an external picker URI. */
+    suspend fun updateJourneyCover(id: Long, coverPhotoPath: String?, updatedAt: Long?): Boolean = database.withTransaction {
+        database.journeyDao().updateJourneyCover(id, coverPhotoPath, updatedAt) == 1
+    }
+
+    suspend fun getJourneyCoverPath(id: Long): String? = database.journeyDao().getJourneyCoverPath(id)
+
+    suspend fun getAllJourneyCoverPaths(): List<String> = database.journeyDao().getAllCoverPaths()
+
     suspend fun deleteJourneys(ids: List<Long>) = database.withTransaction {
         if (ids.isNotEmpty()) database.journeyDao().deleteJourneys(ids)
     }

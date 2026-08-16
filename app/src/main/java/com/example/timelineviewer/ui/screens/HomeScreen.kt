@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,7 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.timelineviewer.R
+import com.example.timelineviewer.data.analysis.MemoryLibraryFilter
+import com.example.timelineviewer.data.analysis.MemoryLibraryOrganizer
+import com.example.timelineviewer.data.analysis.MemoryLibrarySort
 import com.example.timelineviewer.data.model.Journey
+import com.example.timelineviewer.data.model.TransportMode
 import com.example.timelineviewer.ui.components.JourneyCard
 import com.example.timelineviewer.ui.components.TimelineImportDialog
 import kotlin.math.roundToInt
@@ -35,9 +40,13 @@ import kotlin.math.roundToInt
 fun HomeScreen(
     journeys: List<Journey>,
     selectedIds: Set<Long>,
-    searchQuery: String,
+    memoryLibraryFilter: MemoryLibraryFilter,
     isDarkTheme: Boolean,
     onSearchChange: (String) -> Unit,
+    onToggleFavoritesFilter: () -> Unit,
+    onTransportFilterChange: (TransportMode?) -> Unit,
+    onSortChange: (MemoryLibrarySort) -> Unit,
+    onToggleJourneyFavorite: (Long) -> Unit,
     onToggleTheme: () -> Unit,
     onToggleSelect: (Long) -> Unit,
     onSelectAllToggle: (Boolean) -> Unit,
@@ -53,7 +62,9 @@ fun HomeScreen(
     val allSelected = journeys.isNotEmpty() && selectedIds.size == journeys.size
     val totalKm = remember(journeys) { journeys.sumOf { it.totalDistanceKm } }
     val totalStops = remember(journeys) { journeys.sumOf { it.stopCount } }
+    val favoriteCount = remember(journeys) { journeys.count { it.isFavorite } }
     val featuredJourney = remember(journeys) { journeys.maxByOrNull { it.totalDistanceKm } }
+    val archiveSections = remember(journeys) { MemoryLibraryOrganizer.sections(journeys) }
 
     Scaffold(
         topBar = {
@@ -103,7 +114,7 @@ fun HomeScreen(
     ) { paddingValues ->
         if (journeys.isEmpty()) {
             EmptyJourneyLibrary(
-                searchQuery = searchQuery,
+                searchQuery = memoryLibraryFilter.query,
                 onImport = { showImportDialog = true },
                 modifier = modifier
                     .fillMaxSize()
@@ -128,8 +139,17 @@ fun HomeScreen(
 
                 item {
                     JourneySearchField(
-                        searchQuery = searchQuery,
+                        searchQuery = memoryLibraryFilter.query,
                         onSearchChange = onSearchChange
+                    )
+                }
+
+                item {
+                    MemoryLibraryControls(
+                        filter = memoryLibraryFilter,
+                        onToggleFavoritesFilter = onToggleFavoritesFilter,
+                        onTransportFilterChange = onTransportFilterChange,
+                        onSortChange = onSortChange
                     )
                 }
 
@@ -151,12 +171,16 @@ fun HomeScreen(
                     ) {
                         Column {
                             Text(
-                                text = if (searchQuery.isBlank()) "Your travel stories" else "Search results",
+                                text = when {
+                                    memoryLibraryFilter.favoritesOnly -> "Favorite memories"
+                                    memoryLibraryFilter.query.isNotBlank() -> "Search results"
+                                    else -> "Your travel stories"
+                                },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "Newest journeys first",
+                                text = "${memoryLibraryFilter.sort.label} · $favoriteCount favorites in view",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -186,14 +210,25 @@ fun HomeScreen(
                     }
                 }
 
-                items(journeys, key = { it.id }) { journey ->
-                    JourneyCard(
-                        journey = journey,
-                        isSelected = selectedIds.contains(journey.id),
-                        onSelectToggle = { onToggleSelect(journey.id) },
-                        onClick = { onJourneyClick(journey.id) },
-                        onDelete = { onDeleteJourney(journey.id) }
-                    )
+                archiveSections.forEach { section ->
+                    item(key = "section_${section.title}") {
+                        Text(
+                            text = section.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                        )
+                    }
+                    items(section.journeys, key = { it.id }) { journey ->
+                        JourneyCard(
+                            journey = journey,
+                            isSelected = selectedIds.contains(journey.id),
+                            onSelectToggle = { onToggleSelect(journey.id) },
+                            onToggleFavorite = { onToggleJourneyFavorite(journey.id) },
+                            onClick = { onJourneyClick(journey.id) },
+                            onDelete = { onDeleteJourney(journey.id) }
+                        )
+                    }
                 }
             }
         }
@@ -312,6 +347,88 @@ private fun JourneySearchField(
             .fillMaxWidth()
             .testTag("search_input")
     )
+}
+
+@Composable
+private fun MemoryLibraryControls(
+    filter: MemoryLibraryFilter,
+    onToggleFavoritesFilter: () -> Unit,
+    onTransportFilterChange: (TransportMode?) -> Unit,
+    onSortChange: (MemoryLibrarySort) -> Unit
+) {
+    var sortExpanded by remember { mutableStateOf(false) }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Archive view",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Box {
+                    TextButton(onClick = { sortExpanded = true }) {
+                        Icon(Icons.Default.Sort, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(filter.sort.label)
+                    }
+                    DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                        MemoryLibrarySort.entries.forEach { sort ->
+                            DropdownMenuItem(
+                                text = { Text(sort.label) },
+                                onClick = {
+                                    onSortChange(sort)
+                                    sortExpanded = false
+                                },
+                                leadingIcon = if (filter.sort == sort) {
+                                    { Icon(Icons.Default.Check, contentDescription = null) }
+                                } else null
+                            )
+                        }
+                    }
+                }
+            }
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = filter.favoritesOnly,
+                        onClick = onToggleFavoritesFilter,
+                        label = { Text("Favorites") },
+                        leadingIcon = if (filter.favoritesOnly) {
+                            { Icon(Icons.Default.Favorite, contentDescription = null, modifier = Modifier.size(15.dp)) }
+                        } else null
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = filter.transportMode == null,
+                        onClick = { onTransportFilterChange(null) },
+                        label = { Text("All routes") }
+                    )
+                }
+                items(TransportMode.entries.filter { it != TransportMode.UNKNOWN }) { mode ->
+                    FilterChip(
+                        selected = filter.transportMode == mode,
+                        onClick = { onTransportFilterChange(mode) },
+                        label = { Text(mode.label) }
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

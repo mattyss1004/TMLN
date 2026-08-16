@@ -46,6 +46,18 @@ interface JourneyDao {
     @Query("UPDATE journeys SET title = :title, description = :description WHERE id = :id")
     suspend fun updateJourneyMetadata(id: Long, title: String, description: String): Int
 
+    @Query("UPDATE journeys SET isFavorite = :isFavorite WHERE id = :id")
+    suspend fun updateJourneyFavorite(id: Long, isFavorite: Boolean): Int
+
+    @Query("UPDATE journeys SET coverPhotoPath = :coverPhotoPath, coverUpdatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateJourneyCover(id: Long, coverPhotoPath: String?, updatedAt: Long?): Int
+
+    @Query("SELECT coverPhotoPath FROM journeys WHERE id = :id")
+    suspend fun getJourneyCoverPath(id: Long): String?
+
+    @Query("SELECT coverPhotoPath FROM journeys WHERE coverPhotoPath IS NOT NULL")
+    suspend fun getAllCoverPaths(): List<String>
+
     @Query("DELETE FROM journeys WHERE id = :id")
     suspend fun deleteJourney(id: Long)
 

@@ -4,6 +4,9 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.timelineviewer.data.analysis.MemoryLibraryFilter
+import com.example.timelineviewer.data.analysis.MemoryLibraryOrganizer
+import com.example.timelineviewer.data.analysis.MemoryLibrarySort
 import com.example.timelineviewer.data.analysis.RelivePlaybackClock
 import com.example.timelineviewer.data.analysis.ReliveMoment
 import com.example.timelineviewer.data.analysis.ReliveMomentKind
@@ -17,8 +20,10 @@ import com.example.timelineviewer.data.model.JourneyDetailData
 import com.example.timelineviewer.data.model.JourneyMetadataEditor
 import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.OfflineRegionStatus
+import com.example.timelineviewer.data.model.TransportMode
 import com.example.timelineviewer.data.repository.JourneyRepository
 import com.example.timelineviewer.data.seed.SampleDataSeeder
+import com.example.timelineviewer.data.service.JourneyCoverPhotoStore
 import com.example.timelineviewer.data.service.OfflineMapPackManager
 import com.example.timelineviewer.ui.map.JourneyCameraMode
 import com.example.timelineviewer.ui.map.MapExperienceReducer
@@ -40,9 +45,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val repository: JourneyRepository
     private val offlineMapPackManager by lazy { OfflineMapPackManager(app) }
+    private val coverPhotoStore by lazy { JourneyCoverPhotoStore(app) }
 
     val selectedJourneyIds = MutableStateFlow<Set<Long>>(emptySet())
-    val searchQuery = MutableStateFlow("")
+    val memoryLibraryFilter = MutableStateFlow(MemoryLibraryFilter())
     val isDarkTheme = MutableStateFlow(true)
 
     private val _activeJourneyDetail = MutableStateFlow<JourneyDetailData?>(null)
@@ -76,12 +82,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             SampleDataSeeder.seedIfEmpty(db)
         }
 
-        journeys = combine(repository.allJourneys, searchQuery) { list, query ->
-            if (query.isBlank()) list
-            else list.filter {
-                it.title.contains(query, ignoreCase = true) ||
-                    it.description.contains(query, ignoreCase = true)
-            }
+        journeys = combine(repository.allJourneys, memoryLibraryFilter) { list, filter ->
+            MemoryLibraryOrganizer.apply(list, filter)
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -91,6 +93,31 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun toggleTheme() {
         isDarkTheme.value = !isDarkTheme.value
+    }
+
+    fun setMemoryLibraryQuery(query: String) {
+        memoryLibraryFilter.value = memoryLibraryFilter.value.copy(query = query)
+    }
+
+    fun toggleMemoryLibraryFavorites() {
+        memoryLibraryFilter.value = memoryLibraryFilter.value.copy(
+            favoritesOnly = !memoryLibraryFilter.value.favoritesOnly
+        )
+    }
+
+    fun setMemoryLibraryTransportMode(mode: TransportMode?) {
+        memoryLibraryFilter.value = memoryLibraryFilter.value.copy(transportMode = mode)
+    }
+
+    fun setMemoryLibrarySort(sort: MemoryLibrarySort) {
+        memoryLibraryFilter.value = memoryLibraryFilter.value.copy(sort = sort)
+    }
+
+    fun toggleJourneyFavorite(id: Long) {
+        viewModelScope.launch {
+            val journey = journeys.value.firstOrNull { it.id == id } ?: return@launch
+            repository.updateJourneyFavorite(id, !journey.isFavorite)
+        }
     }
 
     fun toggleJourneySelection(id: Long) {
@@ -106,8 +133,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun deleteSelectedJourneys() {
         viewModelScope.launch {
             val ids = selectedJourneyIds.value.toList()
+            val covers = ids.mapNotNull { repository.getJourneyCoverPath(it) }
             removeOfflinePacks(ids)
             repository.deleteJourneys(ids)
+            coverPhotoStore.deleteAll(covers)
             selectedJourneyIds.value = emptySet()
             if (_activeJourneyDetail.value?.journey?.id in ids) {
                 _activeJourneyDetail.value = null
@@ -118,8 +147,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun deleteJourney(id: Long) {
         viewModelScope.launch {
+            val coverPath = repository.getJourneyCoverPath(id)
             removeOfflinePacks(listOf(id))
             repository.deleteJourney(id)
+            coverPhotoStore.delete(coverPath)
             selectedJourneyIds.value = selectedJourneyIds.value - id
             if (_activeJourneyDetail.value?.journey?.id == id) {
                 _activeJourneyDetail.value = null
@@ -130,8 +161,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun deleteAllJourneys() {
         viewModelScope.launch {
+            val coverPaths = repository.getAllJourneyCoverPaths()
             removeOfflinePacks(journeys.value.map { it.id })
             repository.deleteAllJourneys()
+            coverPhotoStore.deleteAll(coverPaths)
             selectedJourneyIds.value = emptySet()
             _activeJourneyDetail.value = null
             _activeOfflineMapRegion.value = null
@@ -172,6 +205,49 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             )
         }
         return saved
+    }
+
+    fun toggleActiveJourneyFavorite() {
+        val detail = _activeJourneyDetail.value ?: return
+        viewModelScope.launch {
+            val nextValue = !detail.journey.isFavorite
+            if (repository.updateJourneyFavorite(detail.journey.id, nextValue)) {
+                _activeJourneyDetail.value = detail.copy(journey = detail.journey.copy(isFavorite = nextValue))
+            }
+        }
+    }
+
+    /**
+     * Copies a chosen picture into private app storage before saving its path. If persistence
+     * fails, the new copy is removed; the previous cover stays intact.
+     */
+    suspend fun setActiveJourneyCover(uri: Uri): Boolean {
+        val detail = _activeJourneyDetail.value ?: return false
+        val previousPath = detail.journey.coverPhotoPath
+        val newPath = runCatching { coverPhotoStore.copyFrom(uri, detail.journey.id) }.getOrElse { return false }
+        val saved = repository.updateJourneyCover(detail.journey.id, newPath, System.currentTimeMillis())
+        if (!saved) {
+            coverPhotoStore.delete(newPath)
+            return false
+        }
+        if (previousPath != newPath) coverPhotoStore.delete(previousPath)
+        _activeJourneyDetail.value = detail.copy(
+            journey = detail.journey.copy(coverPhotoPath = newPath, coverUpdatedAt = System.currentTimeMillis())
+        )
+        return true
+    }
+
+    fun removeActiveJourneyCover() {
+        val detail = _activeJourneyDetail.value ?: return
+        val previousPath = detail.journey.coverPhotoPath ?: return
+        viewModelScope.launch {
+            if (repository.updateJourneyCover(detail.journey.id, null, null)) {
+                coverPhotoStore.delete(previousPath)
+                _activeJourneyDetail.value = detail.copy(
+                    journey = detail.journey.copy(coverPhotoPath = null, coverUpdatedAt = null)
+                )
+            }
+        }
     }
 
     fun downloadActiveJourneyForOfflineUse() {

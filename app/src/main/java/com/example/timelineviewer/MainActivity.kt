@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
             val journeys by viewModel.journeys.collectAsStateWithLifecycle()
             val selectedIds by viewModel.selectedJourneyIds.collectAsStateWithLifecycle()
-            val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+            val memoryLibraryFilter by viewModel.memoryLibraryFilter.collectAsStateWithLifecycle()
 
             val activeDetail by viewModel.activeJourneyDetail.collectAsStateWithLifecycle()
             val activeOfflineMapRegion by viewModel.activeOfflineMapRegion.collectAsStateWithLifecycle()
@@ -81,6 +81,9 @@ class MainActivity : ComponentActivity() {
                                 onSeekToIndex = { viewModel.seekToIndex(it) },
                                 onSpeedChange = { viewModel.setSpeed(it) },
                                 onOpenReliveMode = { viewModel.beginReliveMode() },
+                                onToggleFavorite = { viewModel.toggleActiveJourneyFavorite() },
+                                onSetJourneyCover = { uri -> viewModel.setActiveJourneyCover(uri) },
+                                onRemoveJourneyCover = { viewModel.removeActiveJourneyCover() },
                                 onSaveJourneyMetadata = { title, description ->
                                     viewModel.updateActiveJourneyMetadata(title, description)
                                 },
@@ -92,9 +95,13 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             journeys = journeys,
                             selectedIds = selectedIds,
-                            searchQuery = searchQuery,
+                            memoryLibraryFilter = memoryLibraryFilter,
                             isDarkTheme = isDarkTheme,
-                            onSearchChange = { viewModel.searchQuery.value = it },
+                            onSearchChange = { viewModel.setMemoryLibraryQuery(it) },
+                            onToggleFavoritesFilter = { viewModel.toggleMemoryLibraryFavorites() },
+                            onTransportFilterChange = { viewModel.setMemoryLibraryTransportMode(it) },
+                            onSortChange = { viewModel.setMemoryLibrarySort(it) },
+                            onToggleJourneyFavorite = { viewModel.toggleJourneyFavorite(it) },
                             onToggleTheme = { viewModel.toggleTheme() },
                             onToggleSelect = { viewModel.toggleJourneySelection(it) },
                             onSelectAllToggle = { viewModel.selectAllJourneys(it) },

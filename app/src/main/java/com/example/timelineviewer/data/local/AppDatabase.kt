@@ -13,7 +13,7 @@ import com.example.timelineviewer.data.model.TransportSegment
 
 @Database(
     entities = [Journey::class, RoutePoint::class, Stop::class, TransportSegment::class, OfflineMapRegion::class],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -38,7 +38,8 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(
                     DatabaseMigrations.MIGRATION_1_2,
                     DatabaseMigrations.MIGRATION_2_3,
-                    DatabaseMigrations.MIGRATION_3_4
+                    DatabaseMigrations.MIGRATION_3_4,
+                    DatabaseMigrations.MIGRATION_4_5
                 )
                 .build()
                 INSTANCE = instance

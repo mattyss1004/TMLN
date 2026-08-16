@@ -30,6 +30,10 @@ data class Journey(
     val averageSpeedKmh: Double = 0.0,
     val dominantMode: TransportMode = TransportMode.UNKNOWN,
     val highlightPlaceName: String? = null,
+    /** User-authored archive metadata. Cover paths always point inside the app's private storage. */
+    val isFavorite: Boolean = false,
+    val coverPhotoPath: String? = null,
+    val coverUpdatedAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 

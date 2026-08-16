@@ -137,4 +137,13 @@ object DatabaseMigrations {
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_offline_map_regions_journeyId ON offline_map_regions (journeyId)")
         }
     }
+
+    /** Adds local archive metadata only; all existing route, stop, and offline-pack rows remain intact. */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE journeys ADD COLUMN isFavorite INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE journeys ADD COLUMN coverPhotoPath TEXT")
+            db.execSQL("ALTER TABLE journeys ADD COLUMN coverUpdatedAt INTEGER")
+        }
+    }
 }

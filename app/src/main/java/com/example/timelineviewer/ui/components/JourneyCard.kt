@@ -19,7 +19,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.timelineviewer.data.model.Journey
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -33,6 +35,7 @@ fun JourneyCard(
     journey: Journey,
     isSelected: Boolean,
     onSelectToggle: (Boolean) -> Unit,
+    onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -72,6 +75,7 @@ fun JourneyCard(
                 date = dateFormatter.format(Date(journey.startTime)),
                 year = yearFormatter.format(Date(journey.startTime)),
                 modeColor = modeColor,
+                coverPhotoPath = journey.coverPhotoPath,
                 modifier = Modifier.size(width = 72.dp, height = 104.dp)
             )
 
@@ -107,6 +111,18 @@ fun JourneyCard(
                         }
                     }
 
+                    IconButton(
+                        onClick = onToggleFavorite,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("favorite_journey_${journey.id}")
+                    ) {
+                        Icon(
+                            imageVector = if (journey.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (journey.isFavorite) "Remove from favorites" else "Add to favorites",
+                            tint = if (journey.isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Checkbox(
                         checked = isSelected,
                         onCheckedChange = onSelectToggle,
@@ -180,6 +196,7 @@ private fun JourneyStoryTile(
     date: String,
     year: String,
     modeColor: Color,
+    coverPhotoPath: String?,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -191,14 +208,28 @@ private fun JourneyStoryTile(
                 )
             )
     ) {
-        Icon(
-            imageVector = Icons.Default.Explore,
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.24f),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(48.dp)
-        )
+        if (!coverPhotoPath.isNullOrBlank()) {
+            AsyncImage(
+                model = File(coverPhotoPath),
+                contentDescription = "Cover for $date memory",
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.60f))))
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.Explore,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.24f),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(48.dp)
+            )
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
