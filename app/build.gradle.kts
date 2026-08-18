@@ -24,6 +24,11 @@ val mapboxAccessToken = localProperties.getProperty("MAPBOX_ACCESS_TOKEN")
 // debug key from silently replacing TMLN's stable signing identity.
 val stableSigningStoreFile = System.getenv("TMLN_SIGNING_STORE_FILE")
 
+val tmlnVersionCode = providers.gradleProperty("TMLN_VERSION_CODE").orNull?.toIntOrNull()
+    ?: error("TMLN_VERSION_CODE must be a positive integer in gradle.properties.")
+val tmlnVersionName = providers.gradleProperty("TMLN_VERSION_NAME").orNull?.takeIf { it.isNotBlank() }
+    ?: error("TMLN_VERSION_NAME must be set in gradle.properties.")
+
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
@@ -36,8 +41,8 @@ android {
         applicationId = "com.example.timelineviewer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = tmlnVersionCode
+        versionName = tmlnVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Mapbox reads this standard resource automatically at map initialization.
