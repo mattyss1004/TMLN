@@ -44,7 +44,6 @@ fun HomeScreen(
     onToggleSelect: (Long) -> Unit,
     onSelectAllToggle: (Boolean) -> Unit,
     onDeleteSelected: () -> Unit,
-    onDeleteJourney: (Long) -> Unit,
     onJourneyClick: (Long) -> Unit,
     onImportJson: suspend (String, String) -> Boolean,
     onImportDocument: suspend (Uri, String) -> Boolean,
@@ -52,6 +51,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     var showImportDialog by remember { mutableStateOf(false) }
+    var isSelectionMode by rememberSaveable { mutableStateOf(false) }
     val allSelected = journeys.isNotEmpty() && selectedIds.size == journeys.size
     val favoriteCount = remember(journeys) { journeys.count { it.isFavorite } }
     val archiveSections = remember(journeys) { MemoryLibraryOrganizer.sections(journeys) }
@@ -134,14 +134,16 @@ fun HomeScreen(
                     )
                 }
 
-                if (selectedIds.isNotEmpty()) {
+                if (isSelectionMode) {
                     item {
                         LibrarySelectionToolbar(
-                            journeyCount = journeys.size,
                             selectedCount = selectedIds.size,
                             allSelected = allSelected,
                             onSelectAllToggle = onSelectAllToggle,
-                            onDeleteSelected = onDeleteSelected
+                            onDeleteSelected = {
+                                onDeleteSelected()
+                                isSelectionMode = false
+                            }
                         )
                     }
                 }
@@ -152,43 +154,42 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = when {
-                                    memoryLibraryFilter.favoritesOnly -> "Favorite memories"
-                                    memoryLibraryFilter.query.isNotBlank() -> "Search results"
-                                    else -> "Your journeys"
+                                text = if (isSelectionMode) {
+                                    "Select journeys"
+                                } else {
+                                    when {
+                                        memoryLibraryFilter.favoritesOnly -> "Favorite memories"
+                                        memoryLibraryFilter.query.isNotBlank() -> "Search results"
+                                        else -> "Your journeys"
+                                    }
                                 },
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                             Text(
-                                text = "${journeys.size} journeys · $favoriteCount favorites",
+                                text = if (isSelectionMode) {
+                                    "${selectedIds.size} selected · Tap a card to select"
+                                } else {
+                                    "${journeys.size} journeys · $favoriteCount favorites"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.surfaceVariant
+                        TextButton(
+                            onClick = {
+                                if (isSelectionMode) {
+                                    onSelectAllToggle(false)
+                                    isSelectionMode = false
+                                } else {
+                                    isSelectionMode = true
+                                }
+                            },
+                            modifier = Modifier.testTag("toggle_selection_mode_button")
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoStories,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "${journeys.size}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(if (isSelectionMode) "Done" else "Select")
                         }
                     }
                 }
@@ -206,10 +207,10 @@ fun HomeScreen(
                         JourneyCard(
                             journey = journey,
                             isSelected = selectedIds.contains(journey.id),
+                            isSelectionMode = isSelectionMode,
                             onSelectToggle = { onToggleSelect(journey.id) },
                             onToggleFavorite = { onToggleJourneyFavorite(journey.id) },
-                            onClick = { onJourneyClick(journey.id) },
-                            onDelete = { onDeleteJourney(journey.id) }
+                            onClick = { onJourneyClick(journey.id) }
                         )
                     }
                 }
@@ -346,7 +347,6 @@ private fun MemoryLibraryControls(
 
 @Composable
 private fun LibrarySelectionToolbar(
-    journeyCount: Int,
     selectedCount: Int,
     allSelected: Boolean,
     onSelectAllToggle: (Boolean) -> Unit,
@@ -372,7 +372,7 @@ private fun LibrarySelectionToolbar(
                 )
                 Spacer(modifier = Modifier.width(7.dp))
                 Text(
-                    text = if (selectedCount > 0) "$selectedCount selected" else "$journeyCount journeys ready to explore",
+                    text = "$selectedCount selected",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (selectedCount > 0) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -383,7 +383,7 @@ private fun LibrarySelectionToolbar(
                     onClick = { onSelectAllToggle(!allSelected) },
                     modifier = Modifier.testTag("select_all_button")
                 ) {
-                    Text(if (allSelected) "Clear" else "Select")
+                    Text(if (allSelected) "Clear all" else "Select all")
                 }
                 AnimatedVisibility(visible = selectedCount > 0) {
                     IconButton(

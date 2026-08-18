@@ -106,7 +106,6 @@ class MainActivity : ComponentActivity() {
                             onToggleSelect = { viewModel.toggleJourneySelection(it) },
                             onSelectAllToggle = { viewModel.selectAllJourneys(it) },
                             onDeleteSelected = { viewModel.deleteSelectedJourneys() },
-                            onDeleteJourney = { viewModel.deleteJourney(it) },
                             onJourneyClick = { viewModel.loadJourneyDetail(it) },
                             onImportJson = { json, title -> viewModel.importTimelineJson(json, title) },
                             onImportDocument = { uri: Uri, title -> viewModel.importTimelineDocument(uri, title) },

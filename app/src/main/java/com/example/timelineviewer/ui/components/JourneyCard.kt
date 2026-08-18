@@ -34,10 +34,10 @@ import java.util.Locale
 fun JourneyCard(
     journey: Journey,
     isSelected: Boolean,
-    onSelectToggle: (Boolean) -> Unit,
+    isSelectionMode: Boolean,
+    onSelectToggle: () -> Unit,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
-    onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val dateFormatter = remember { SimpleDateFormat("MMM d", Locale.getDefault()) }
@@ -48,7 +48,7 @@ fun JourneyCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(onClick = if (isSelectionMode) onSelectToggle else onClick)
             .testTag("journey_card_${journey.id}"),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
@@ -111,23 +111,26 @@ fun JourneyCard(
                         }
                     }
 
-                    IconButton(
-                        onClick = onToggleFavorite,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .testTag("favorite_journey_${journey.id}")
-                    ) {
-                        Icon(
-                            imageVector = if (journey.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (journey.isFavorite) "Remove from favorites" else "Add to favorites",
-                            tint = if (journey.isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant
+                    if (isSelectionMode) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onSelectToggle() },
+                            modifier = Modifier.testTag("journey_checkbox_${journey.id}")
                         )
+                    } else {
+                        IconButton(
+                            onClick = onToggleFavorite,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("favorite_journey_${journey.id}")
+                        ) {
+                            Icon(
+                                imageVector = if (journey.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = if (journey.isFavorite) "Remove from favorites" else "Add to favorites",
+                                tint = if (journey.isFavorite) Color(0xFFE11D48) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                    Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = onSelectToggle,
-                        modifier = Modifier.testTag("journey_checkbox_${journey.id}")
-                    )
                 }
 
                 Row(
@@ -154,24 +157,7 @@ fun JourneyCard(
                 }
             }
 
-            Column(
-                modifier = Modifier.fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("delete_journey_${journey.id}")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete Journey",
-                        modifier = Modifier.size(19.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            if (!isSelectionMode) {
                 Surface(
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.primaryContainer,
