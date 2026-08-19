@@ -106,22 +106,13 @@ fun HomeScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        if (journeys.isEmpty()) {
-            EmptyJourneyLibrary(
-                searchQuery = memoryLibraryFilter.query,
-                onImport = { showImportDialog = true },
-                modifier = modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            )
-        } else {
-            LazyColumn(
-                modifier = modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
                 item {
                     JourneySearchField(
                         searchQuery = memoryLibraryFilter.query,
@@ -198,29 +189,39 @@ fun HomeScreen(
                     }
                 }
 
-                archiveSections.forEach { section ->
-                    item(key = "section_${section.title}") {
-                        Text(
-                            text = section.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                if (journeys.isEmpty()) {
+                    item {
+                        EmptyJourneyLibrary(
+                            searchQuery = memoryLibraryFilter.query,
+                            onClearSearch = { onSearchChange("") },
+                            onImport = { showImportDialog = true },
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-                    items(section.journeys, key = { it.id }) { journey ->
-                        JourneyCard(
-                            journey = journey,
-                            transportSummary = libraryItemByJourneyId.getValue(journey.id).transportSummary,
-                            isSelected = selectedIds.contains(journey.id),
-                            isSelectionMode = isSelectionMode,
-                            onSelectToggle = { onToggleSelect(journey.id) },
-                            onToggleFavorite = { onToggleJourneyFavorite(journey.id) },
-                            onClick = { onJourneyClick(journey.id) }
-                        )
+                } else {
+                    archiveSections.forEach { section ->
+                        item(key = "section_${section.title}") {
+                            Text(
+                                text = section.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                            )
+                        }
+                        items(section.journeys, key = { it.id }) { journey ->
+                            JourneyCard(
+                                journey = journey,
+                                transportSummary = libraryItemByJourneyId.getValue(journey.id).transportSummary,
+                                isSelected = selectedIds.contains(journey.id),
+                                isSelectionMode = isSelectionMode,
+                                onSelectToggle = { onToggleSelect(journey.id) },
+                                onToggleFavorite = { onToggleJourneyFavorite(journey.id) },
+                                onClick = { onJourneyClick(journey.id) }
+                            )
+                        }
                     }
                 }
             }
-        }
     }
 
     if (showImportDialog) {
@@ -410,6 +411,7 @@ private fun LibrarySelectionToolbar(
 @Composable
 private fun EmptyJourneyLibrary(
     searchQuery: String,
+    onClearSearch: () -> Unit,
     onImport: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -455,7 +457,16 @@ private fun EmptyJourneyLibrary(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (searchQuery.isBlank()) {
+                if (searchQuery.isNotBlank()) {
+                    TextButton(
+                        onClick = onClearSearch,
+                        modifier = Modifier.testTag("empty_state_clear_search_button")
+                    ) {
+                        Icon(Icons.Default.Clear, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Clear search")
+                    }
+                } else {
                     Button(
                         onClick = onImport,
                         shape = RoundedCornerShape(14.dp),
