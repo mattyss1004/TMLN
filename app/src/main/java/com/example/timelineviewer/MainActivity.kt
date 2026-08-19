@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsStateWithLifecycle()
-            val journeys by viewModel.journeys.collectAsStateWithLifecycle()
+            val libraryItems by viewModel.libraryItems.collectAsStateWithLifecycle()
             val selectedIds by viewModel.selectedJourneyIds.collectAsStateWithLifecycle()
             val memoryLibraryFilter by viewModel.memoryLibraryFilter.collectAsStateWithLifecycle()
 
@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
                         }
                     } else {
                         HomeScreen(
-                            journeys = journeys,
+                            libraryItems = libraryItems,
                             selectedIds = selectedIds,
                             memoryLibraryFilter = memoryLibraryFilter,
                             isDarkTheme = isDarkTheme,

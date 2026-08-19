@@ -18,6 +18,7 @@ import java.io.Reader
 class JourneyRepository(private val database: AppDatabase) {
 
     val allJourneys: Flow<List<Journey>> = database.journeyDao().getAllJourneys()
+    val allTransportSegments = database.transportSegmentDao().getAllSegments()
 
     suspend fun getJourneyDetail(id: Long): JourneyDetailData? {
         val journey = database.journeyDao().getJourneyById(id) ?: return null

@@ -115,6 +115,9 @@ interface OfflineMapRegionDao {
 
 @Dao
 interface TransportSegmentDao {
+    @Query("SELECT * FROM transport_segments ORDER BY journeyId ASC, startIndex ASC")
+    fun getAllSegments(): Flow<List<TransportSegment>>
+
     @Query("SELECT * FROM transport_segments WHERE journeyId = :journeyId ORDER BY startIndex ASC")
     fun getSegmentsForJourney(journeyId: Long): Flow<List<TransportSegment>>
 

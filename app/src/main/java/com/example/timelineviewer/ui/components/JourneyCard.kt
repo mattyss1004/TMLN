@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.timelineviewer.data.analysis.JourneyTransportSummary
 import com.example.timelineviewer.data.model.Journey
 import java.io.File
 import java.text.SimpleDateFormat
@@ -33,6 +34,7 @@ import java.util.Locale
 @Composable
 fun JourneyCard(
     journey: Journey,
+    transportSummary: JourneyTransportSummary,
     isSelected: Boolean,
     isSelectionMode: Boolean,
     onSelectToggle: () -> Unit,
@@ -43,7 +45,7 @@ fun JourneyCard(
     val dateFormatter = remember { SimpleDateFormat("MMM d", Locale.getDefault()) }
     val yearFormatter = remember { SimpleDateFormat("yyyy", Locale.getDefault()) }
     val formattedDuration = remember(journey.totalDurationSeconds) { formatDuration(journey.totalDurationSeconds) }
-    val modeColor = Color(journey.dominantMode.hexColor)
+    val modeColor = Color(transportSummary.primaryMode.hexColor)
 
     Card(
         modifier = modifier
@@ -137,10 +139,7 @@ fun JourneyCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TravelModePill(
-                        label = journey.dominantMode.label,
-                        color = modeColor
-                    )
+                    TransportSummaryPill(transportSummary)
                     journey.highlightPlaceName?.takeIf { it.isNotBlank() }?.let { highlight ->
                         HighlightPill(highlight)
                     }
@@ -236,26 +235,29 @@ private fun JourneyStoryTile(
 }
 
 @Composable
-private fun TravelModePill(label: String, color: Color) {
+private fun TransportSummaryPill(summary: JourneyTransportSummary) {
+    val primaryColor = Color(summary.primaryMode.hexColor)
     Surface(
         shape = RoundedCornerShape(50),
-        color = color.copy(alpha = 0.14f)
+        color = primaryColor.copy(alpha = 0.14f)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(color)
-            )
+            summary.modes.take(3).forEach { mode ->
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(Color(mode.hexColor))
+                )
+            }
             Text(
-                text = label,
+                text = summary.label,
                 style = MaterialTheme.typography.labelSmall,
-                color = color
+                color = primaryColor
             )
         }
     }

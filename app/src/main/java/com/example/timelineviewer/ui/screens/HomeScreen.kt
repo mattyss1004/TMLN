@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.timelineviewer.data.analysis.JourneyLibraryItem
 import com.example.timelineviewer.data.analysis.MemoryLibraryFilter
 import com.example.timelineviewer.data.analysis.MemoryLibraryOrganizer
 import com.example.timelineviewer.data.analysis.MemoryLibrarySort
@@ -32,7 +33,7 @@ import com.example.timelineviewer.ui.components.TimelineImportDialog
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    journeys: List<Journey>,
+    libraryItems: List<JourneyLibraryItem>,
     selectedIds: Set<Long>,
     memoryLibraryFilter: MemoryLibraryFilter,
     isDarkTheme: Boolean,
@@ -53,6 +54,8 @@ fun HomeScreen(
 ) {
     var showImportDialog by remember { mutableStateOf(false) }
     var isSelectionMode by rememberSaveable { mutableStateOf(false) }
+    val journeys = remember(libraryItems) { libraryItems.map { it.journey } }
+    val libraryItemByJourneyId = remember(libraryItems) { libraryItems.associateBy { it.journey.id } }
     val allSelected = journeys.isNotEmpty() && selectedIds.size == journeys.size
     val favoriteCount = remember(journeys) { journeys.count { it.isFavorite } }
     val archiveSections = remember(journeys) { MemoryLibraryOrganizer.sections(journeys) }
@@ -207,6 +210,7 @@ fun HomeScreen(
                     items(section.journeys, key = { it.id }) { journey ->
                         JourneyCard(
                             journey = journey,
+                            transportSummary = libraryItemByJourneyId.getValue(journey.id).transportSummary,
                             isSelected = selectedIds.contains(journey.id),
                             isSelectionMode = isSelectionMode,
                             onSelectToggle = { onToggleSelect(journey.id) },

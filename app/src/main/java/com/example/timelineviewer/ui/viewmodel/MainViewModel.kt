@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.timelineviewer.data.analysis.MemoryLibraryFilter
 import com.example.timelineviewer.data.analysis.MemoryLibraryOrganizer
 import com.example.timelineviewer.data.analysis.MemoryLibrarySort
+import com.example.timelineviewer.data.analysis.JourneyLibraryItem
+import com.example.timelineviewer.data.analysis.JourneyTransportSummarizer
 import com.example.timelineviewer.data.analysis.RelivePlaybackClock
 import com.example.timelineviewer.data.analysis.ReliveMoment
 import com.example.timelineviewer.data.analysis.ReliveMomentKind
@@ -73,6 +75,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private var playbackJob: Job? = null
     val journeys: StateFlow<List<Journey>>
+    val libraryItems: StateFlow<List<JourneyLibraryItem>>
 
     init {
         val db = AppDatabase.getDatabase(app)
@@ -84,6 +87,23 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
         journeys = combine(repository.allJourneys, memoryLibraryFilter) { list, filter ->
             MemoryLibraryOrganizer.apply(list, filter)
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+        libraryItems = combine(journeys, repository.allTransportSegments) { visibleJourneys, segments ->
+            val segmentsByJourney = segments.groupBy { it.journeyId }
+            visibleJourneys.map { journey ->
+                JourneyLibraryItem(
+                    journey = journey,
+                    transportSummary = JourneyTransportSummarizer.fromSegments(
+                        segments = segmentsByJourney[journey.id].orEmpty(),
+                        fallbackMode = journey.dominantMode
+                    )
+                )
+            }
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
