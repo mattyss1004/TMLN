@@ -19,7 +19,8 @@ enum class JourneyBaseStyle {
 enum class JourneySceneMood(val label: String) {
     DAY("Day"),
     DUSK("Dusk"),
-    NIGHT("Night")
+    NIGHT("Night"),
+    DAWN("Dawn")
 }
 
 data class MapExperienceState(
@@ -57,7 +58,8 @@ object MapExperienceReducer {
         sceneMood = when (state.sceneMood) {
             JourneySceneMood.DAY -> JourneySceneMood.DUSK
             JourneySceneMood.DUSK -> JourneySceneMood.NIGHT
-            JourneySceneMood.NIGHT -> JourneySceneMood.DAY
+            JourneySceneMood.NIGHT -> JourneySceneMood.DAWN
+            JourneySceneMood.DAWN -> JourneySceneMood.DAY
         }
     )
 

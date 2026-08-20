@@ -338,7 +338,7 @@ private fun MapControlStack(
             )
             MapControlButton(
                 icon = Icons.Default.AutoAwesome,
-                contentDescription = "Cycle Day Dusk Night Scene",
+                contentDescription = "Cycle Day Dusk Night Dawn Scene",
                 onClick = onCycleSceneMood,
                 selected = mapExperience.sceneMood != JourneySceneMood.DAY,
                 testTag = "cycle_scene_mood"
@@ -548,6 +548,7 @@ private fun JourneySceneMood.toLightPreset(): LightPresetValue = when (this) {
     JourneySceneMood.DAY -> LightPresetValue.DAY
     JourneySceneMood.DUSK -> LightPresetValue.DUSK
     JourneySceneMood.NIGHT -> LightPresetValue.NIGHT
+    JourneySceneMood.DAWN -> LightPresetValue.DAWN
 }
 
 private fun routeCenter(points: List<RoutePoint>): Point = Point.fromLngLat(
