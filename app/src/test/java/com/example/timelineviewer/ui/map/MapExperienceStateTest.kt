@@ -60,10 +60,12 @@ class MapExperienceStateTest {
         val day = MapExperienceState(sceneMood = JourneySceneMood.DAY)
         val dusk = MapExperienceReducer.nextMood(day)
         val night = MapExperienceReducer.nextMood(dusk)
-        val backToDay = MapExperienceReducer.nextMood(night)
+        val dawn = MapExperienceReducer.nextMood(night)
+        val backToDay = MapExperienceReducer.nextMood(dawn)
 
         assertEquals(JourneySceneMood.DUSK, dusk.sceneMood)
         assertEquals(JourneySceneMood.NIGHT, night.sceneMood)
+        assertEquals(JourneySceneMood.DAWN, dawn.sceneMood)
         assertEquals(JourneySceneMood.DAY, backToDay.sceneMood)
     }
 }
