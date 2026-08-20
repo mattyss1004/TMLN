@@ -52,7 +52,10 @@ class AppDatabaseMigrationTest {
 
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(DatabaseMigrations.MIGRATION_4_5)
+            .addMigrations(
+                DatabaseMigrations.MIGRATION_4_5,
+                DatabaseMigrations.MIGRATION_5_6
+            )
             .build()
 
         val journey = database.journeyDao().getJourneyById(JOURNEY_ID)
