@@ -1,6 +1,7 @@
 package com.example.timelineviewer.data.analysis
 
 import com.example.timelineviewer.data.model.Journey
+import com.example.timelineviewer.data.model.JourneySource
 import com.example.timelineviewer.data.model.TransportMode
 import java.time.Instant
 import java.time.ZoneId
@@ -25,6 +26,11 @@ data class MemoryLibraryFilter(
 data class MemoryLibrarySection(
     val title: String,
     val journeys: List<Journey>
+)
+
+data class MemoryLibrarySourceSection(
+    val title: String,
+    val sections: List<MemoryLibrarySection>
 )
 
 /** Pure, on-device archive organizing logic shared by the ViewModel and unit tests. */
@@ -56,6 +62,20 @@ object MemoryLibraryOrganizer {
                     journeys = monthJourneys
                 )
             }
+
+    fun sourceSections(
+        journeys: List<Journey>,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): List<MemoryLibrarySourceSection> = listOf(
+        JourneySource.DEMO to "Test journeys",
+        JourneySource.IMPORTED to "Imported journeys"
+    ).mapNotNull { (source, title) ->
+        val sourceJourneys = journeys.filter { it.source == source }
+        if (sourceJourneys.isEmpty()) null else MemoryLibrarySourceSection(
+            title = "$title (${sourceJourneys.size})",
+            sections = sections(sourceJourneys, zoneId)
+        )
+    }
 
     private fun matchesQuery(journey: Journey, query: String): Boolean = listOfNotNull(
         journey.title,

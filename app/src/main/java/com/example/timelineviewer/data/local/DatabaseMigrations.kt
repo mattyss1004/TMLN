@@ -146,4 +146,25 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE journeys ADD COLUMN coverUpdatedAt INTEGER")
         }
     }
+
+    /**
+     * Adds a local provenance marker. Existing rows default to IMPORTED so personal data is never
+     * silently reclassified; only the three known original seeded demos are labelled DEMO.
+     */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE journeys ADD COLUMN source TEXT NOT NULL DEFAULT 'IMPORTED'")
+            db.execSQL(
+                """
+                UPDATE journeys
+                SET source = 'DEMO'
+                WHERE title IN (
+                    'Prague Historic City Exploration',
+                    'Tokyo Metro Express & Night Drive',
+                    'Scenic Alpine Mountain Highway'
+                )
+                """.trimIndent()
+            )
+        }
+    }
 }

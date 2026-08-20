@@ -10,7 +10,11 @@ import com.google.gson.stream.JsonToken
 import java.io.Reader
 import java.io.StringReader
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.ArrayDeque
+import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
@@ -46,7 +50,19 @@ object TimelineParser {
         defaultTitle: String = "Imported Timeline Journey"
     ): ParsedJourneyResult? = parseTimeline(StringReader(jsonString), defaultTitle)
 
-    fun parseTimeline(reader: Reader, defaultTitle: String = "Imported Timeline Journey"): ParsedJourneyResult? {
+    fun parseTimeline(reader: Reader, defaultTitle: String = "Imported Timeline Journey"): ParsedJourneyResult? =
+        parseTimelineJourneys(reader, defaultTitle).firstOrNull()
+
+    /**
+     * Creates one journey for each device-local calendar day represented by the import. Google
+     * semantic exports contain many activity, visit, and timeline-path records per day; they are
+     * source records, not separate journeys.
+     */
+    fun parseTimelineJourneys(
+        reader: Reader,
+        defaultTitle: String = "Imported Timeline Journey",
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): List<ParsedJourneyResult> {
         return try {
             val rawPoints = mutableListOf<RawPoint>()
             JsonReader(reader).use { jsonReader ->
@@ -58,23 +74,34 @@ object TimelineParser {
                 }
             }
 
-            val chronological = normaliseAndSort(rawPoints)
-            if (chronological.isEmpty()) return null
-
-            val cleaned = removeJitter(chronological)
-            val stops = mutableListOf<Stop>()
-            detectDwellStops(cleaned, stops)
-            val displayPoints = simplifyPointsPreservingVisits(cleaned, SIMPLIFICATION_TOLERANCE_KM)
-
-            buildJourneyResult(
-                points = displayPoints,
-                stops = stops,
-                defaultTitle = defaultTitle
-            )
+            normaliseAndSort(rawPoints)
+                .groupBy { Instant.ofEpochMilli(it.timestamp).atZone(zoneId).toLocalDate() }
+                .toSortedMap()
+                .mapNotNull { (day, dayPoints) ->
+                    val cleaned = removeJitter(dayPoints)
+                    if (cleaned.isEmpty()) return@mapNotNull null
+                    val stops = mutableListOf<Stop>()
+                    detectDwellStops(cleaned, stops)
+                    val displayPoints = simplifyPointsPreservingVisits(cleaned, SIMPLIFICATION_TOLERANCE_KM)
+                    buildJourneyResult(
+                        points = displayPoints,
+                        stops = stops,
+                        defaultTitle = dailyJourneyTitle(defaultTitle, day)
+                    )
+                }
         } catch (exception: Exception) {
             exception.printStackTrace()
-            null
+            emptyList()
         }
+    }
+
+    private fun dailyJourneyTitle(baseTitle: String, day: LocalDate): String {
+        val date = day.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault()))
+        val prefix = baseTitle.takeUnless {
+            it.equals("Imported Timeline Journey", ignoreCase = true) ||
+                it.equals("New Google Takeout Journey", ignoreCase = true)
+        }
+        return if (prefix.isNullOrBlank()) "Imported journey — $date" else "$prefix — $date"
     }
 
     private data class RawPoint(
@@ -111,7 +138,9 @@ object TimelineParser {
     private data class SemanticModeInterval(
         val start: Long,
         val end: Long,
-        val mode: TransportMode
+        val mode: TransportMode,
+        val startLocation: LocationData,
+        val endLocation: LocationData
     )
 
     private fun parseRootObject(reader: JsonReader, output: MutableList<RawPoint>) {
@@ -145,10 +174,40 @@ object TimelineParser {
         }
         reader.endArray()
 
+        modeIntervals.forEach { interval ->
+            val hasTimelinePath = output.subList(outputStart, output.size).any { point ->
+                !point.isPlaceVisit && point.timestamp in interval.start..interval.end
+            }
+            if (!hasTimelinePath) {
+                if (interval.startLocation.isValid()) {
+                    appendPoint(
+                        output,
+                        RawPoint(
+                            interval.startLocation.lat,
+                            interval.startLocation.lng,
+                            interval.start,
+                            modeOverride = interval.mode
+                        )
+                    )
+                }
+                if (interval.endLocation.isValid()) {
+                    appendPoint(
+                        output,
+                        RawPoint(
+                            interval.endLocation.lat,
+                            interval.endLocation.lng,
+                            interval.end,
+                            modeOverride = interval.mode
+                        )
+                    )
+                }
+            }
+        }
+
         if (modeIntervals.isNotEmpty()) {
             for (index in outputStart until output.size) {
                 val point = output[index]
-                if (point.modeOverride == null) {
+                if (!point.isPlaceVisit && point.modeOverride == null) {
                     val mode = modeIntervals.firstOrNull { point.timestamp in it.start..it.end }?.mode
                     if (mode != null) output[index] = point.copy(modeOverride = mode)
                 }
@@ -176,22 +235,6 @@ object TimelineParser {
         }
         reader.endObject()
 
-        activity?.let { value ->
-            if (value.start.isValid()) {
-                appendPoint(output, RawPoint(value.start.lat, value.start.lng, startTime, modeOverride = value.mode))
-            }
-            if (value.end.isValid()) {
-                appendPoint(
-                    output,
-                    RawPoint(
-                        value.end.lat,
-                        value.end.lng,
-                        endTime.coerceAtLeast(startTime),
-                        modeOverride = value.mode
-                    )
-                )
-            }
-        }
         timelinePoints.forEach { appendPoint(output, it) }
         visit?.let { value ->
             if (value.location.isValid()) {
@@ -209,10 +252,16 @@ object TimelineParser {
                 )
             }
         }
-        val mode = activity?.mode
-        return mode
-            ?.takeIf { startTime > 0L && endTime >= startTime }
-            ?.let { SemanticModeInterval(startTime, endTime, it) }
+        val value = activity ?: return null
+        val mode = value.mode ?: return null
+        if (startTime <= 0L || endTime < startTime) return null
+        return SemanticModeInterval(
+            start = startTime,
+            end = endTime,
+            mode = mode,
+            startLocation = value.start,
+            endLocation = value.end
+        )
     }
 
     private fun readSemanticActivity(reader: JsonReader): SemanticActivityData {

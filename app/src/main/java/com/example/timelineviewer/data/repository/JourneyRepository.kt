@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
 import com.example.timelineviewer.data.model.JourneyDetailData
+import com.example.timelineviewer.data.model.JourneySource
 import com.example.timelineviewer.data.model.JourneyMetadata
 import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.RoutePoint
@@ -80,29 +81,37 @@ class JourneyRepository(private val database: AppDatabase) {
         database.offlineMapRegionDao().deleteForJourney(journeyId)
     }
 
-    /** Parses pasted text on a background dispatcher, then writes the full journey atomically. */
+    /** Parses pasted text on a background dispatcher, then writes one journey per local calendar day atomically. */
     suspend fun importTimelineJson(jsonString: String, title: String): Boolean {
         val parsed = withContext(Dispatchers.Default) {
-            TimelineParser.parseTimelineJson(jsonString, title)
-        } ?: return false
-        persistParsedJourney(parsed)
-        return true
+            TimelineParser.parseTimelineJourneys(java.io.StringReader(jsonString), title)
+        }
+        return persistImportedJourneys(parsed)
     }
 
     /**
-     * Parses a file stream without first loading a Takeout/GeoJSON document into an in-memory
-     * String. The caller owns and closes the reader after this operation returns.
+     * Parses a file stream without first loading a Takeout/GeoJSON document into UI memory. The
+     * caller owns and closes the reader after this operation returns.
      */
     suspend fun importTimelineReader(reader: Reader, title: String): Boolean {
         val parsed = withContext(Dispatchers.Default) {
-            TimelineParser.parseTimeline(reader, title)
-        } ?: return false
-        persistParsedJourney(parsed)
+            TimelineParser.parseTimelineJourneys(reader, title)
+        }
+        return persistImportedJourneys(parsed)
+    }
+
+    private suspend fun persistImportedJourneys(parsedJourneys: List<ParsedJourneyResult>): Boolean {
+        if (parsedJourneys.isEmpty()) return false
+        database.withTransaction {
+            parsedJourneys.forEach { persistParsedJourney(it) }
+        }
         return true
     }
 
-    private suspend fun persistParsedJourney(parsed: ParsedJourneyResult) = database.withTransaction {
-        val journeyId = database.journeyDao().insertJourney(parsed.journey)
+    private suspend fun persistParsedJourney(parsed: ParsedJourneyResult) {
+        val journeyId = database.journeyDao().insertJourney(
+            parsed.journey.copy(source = JourneySource.IMPORTED)
+        )
         database.routePointDao().insertPoints(parsed.points.map { it.copy(journeyId = journeyId) })
         database.stopDao().insertStops(parsed.stops.map { it.copy(journeyId = journeyId) })
         database.transportSegmentDao().insertSegments(parsed.segments.map { it.copy(journeyId = journeyId) })

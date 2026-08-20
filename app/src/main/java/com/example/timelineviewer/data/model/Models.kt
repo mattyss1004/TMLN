@@ -14,6 +14,12 @@ enum class TransportMode(val label: String, val hexColor: Long) {
     UNKNOWN("Unknown", 0xFF6B7280)    // Gray
 }
 
+/** Identifies app-provided test content separately from journeys created from personal imports. */
+enum class JourneySource {
+    DEMO,
+    IMPORTED
+}
+
 @Serializable
 @Entity(tableName = "journeys")
 data class Journey(
@@ -34,7 +40,8 @@ data class Journey(
     val isFavorite: Boolean = false,
     val coverPhotoPath: String? = null,
     val coverUpdatedAt: Long? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val source: JourneySource = JourneySource.IMPORTED
 )
 
 @Serializable

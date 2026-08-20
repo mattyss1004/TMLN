@@ -2,6 +2,7 @@ package com.example.timelineviewer.data.local
 
 import androidx.room.*
 import com.example.timelineviewer.data.model.Journey
+import com.example.timelineviewer.data.model.JourneySource
 import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.model.RoutePoint
@@ -19,6 +20,16 @@ class Converters {
         TransportMode.valueOf(value)
     } catch (e: Exception) {
         TransportMode.UNKNOWN
+    }
+
+    @TypeConverter
+    fun fromJourneySource(source: JourneySource): String = source.name
+
+    @TypeConverter
+    fun toJourneySource(value: String): JourneySource = try {
+        JourneySource.valueOf(value)
+    } catch (e: Exception) {
+        JourneySource.IMPORTED
     }
 
     @TypeConverter

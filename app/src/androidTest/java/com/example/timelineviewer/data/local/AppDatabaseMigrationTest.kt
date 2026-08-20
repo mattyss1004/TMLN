@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.example.timelineviewer.data.model.JourneySource
 import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.model.TransportMode
 import kotlinx.coroutines.runBlocking
@@ -105,6 +106,44 @@ class AppDatabaseMigrationTest {
         assertEquals(1_720_007_300_000L, offlineRegion.downloadedAt)
 
         database.close()
+    }
+
+    @Test
+    fun migrationFromVersion5SeparatesOriginalDemosFromImportedArchive() = runBlocking {
+        val databaseName = "migration-v5-to-v6-test.db"
+        val version5Database = migrationHelper.createDatabase(databaseName, 5)
+        insertVersion5Journey(version5Database, 1L, "Prague Historic City Exploration")
+        insertVersion5Journey(version5Database, 99L, "Personal Timeline — Jul 25, 2026")
+        version5Database.close()
+
+        migrationHelper.runMigrationsAndValidate(
+            databaseName,
+            6,
+            true,
+            DatabaseMigrations.MIGRATION_5_6
+        ).close()
+
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+            .addMigrations(DatabaseMigrations.MIGRATION_5_6)
+            .build()
+        assertEquals(JourneySource.DEMO, database.journeyDao().getJourneyById(1L)?.source)
+        assertEquals(JourneySource.IMPORTED, database.journeyDao().getJourneyById(99L)?.source)
+        database.close()
+        context.deleteDatabase(databaseName)
+    }
+
+    private fun insertVersion5Journey(database: SupportSQLiteDatabase, id: Long, title: String) {
+        database.execSQL(
+            """
+            INSERT INTO journeys (
+                id, title, description, startTime, endTime, totalDistanceKm, totalDurationSeconds,
+                pointCount, stopCount, maxSpeedKmh, averageSpeedKmh, dominantMode, highlightPlaceName,
+                isFavorite, coverPhotoPath, coverUpdatedAt, createdAt
+            ) VALUES (?, ?, '', 1720000000000, 1720003600000, 1.0, 3600, 2, 0, 1.0, 1.0, 'WALKING', NULL, 0, NULL, NULL, 1720003600000)
+            """.trimIndent(),
+            arrayOf(id, title)
+        )
     }
 
     private fun seedRepresentativeVersion4Archive(database: SupportSQLiteDatabase) {

@@ -58,7 +58,7 @@ fun HomeScreen(
     val libraryItemByJourneyId = remember(libraryItems) { libraryItems.associateBy { it.journey.id } }
     val allSelected = journeys.isNotEmpty() && selectedIds.size == journeys.size
     val favoriteCount = remember(journeys) { journeys.count { it.isFavorite } }
-    val archiveSections = remember(journeys) { MemoryLibraryOrganizer.sections(journeys) }
+    val sourceSections = remember(journeys) { MemoryLibraryOrganizer.sourceSections(journeys) }
 
     Scaffold(
         topBar = {
@@ -199,25 +199,35 @@ fun HomeScreen(
                         )
                     }
                 } else {
-                    archiveSections.forEach { section ->
-                        item(key = "section_${section.title}") {
+                    sourceSections.forEach { sourceSection ->
+                        item(key = "source_${sourceSection.title}") {
                             Text(
-                                text = section.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                                text = sourceSection.title,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                             )
                         }
-                        items(section.journeys, key = { it.id }) { journey ->
-                            JourneyCard(
-                                journey = journey,
-                                transportSummary = libraryItemByJourneyId.getValue(journey.id).transportSummary,
-                                isSelected = selectedIds.contains(journey.id),
-                                isSelectionMode = isSelectionMode,
-                                onSelectToggle = { onToggleSelect(journey.id) },
-                                onToggleFavorite = { onToggleJourneyFavorite(journey.id) },
-                                onClick = { onJourneyClick(journey.id) }
-                            )
+                        sourceSection.sections.forEach { section ->
+                            item(key = "section_${sourceSection.title}_${section.title}") {
+                                Text(
+                                    text = section.title,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                                )
+                            }
+                            items(section.journeys, key = { it.id }) { journey ->
+                                JourneyCard(
+                                    journey = journey,
+                                    transportSummary = libraryItemByJourneyId.getValue(journey.id).transportSummary,
+                                    isSelected = selectedIds.contains(journey.id),
+                                    isSelectionMode = isSelectionMode,
+                                    onSelectToggle = { onToggleSelect(journey.id) },
+                                    onToggleFavorite = { onToggleJourneyFavorite(journey.id) },
+                                    onClick = { onJourneyClick(journey.id) }
+                                )
+                            }
                         }
                     }
                 }

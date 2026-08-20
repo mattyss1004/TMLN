@@ -2,6 +2,7 @@ package com.example.timelineviewer.data.seed
 
 import com.example.timelineviewer.data.local.AppDatabase
 import com.example.timelineviewer.data.model.Journey
+import com.example.timelineviewer.data.model.JourneySource
 import com.example.timelineviewer.data.model.RoutePoint
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.data.model.TransportMode
@@ -106,7 +107,8 @@ object SampleDataSeeder {
                 totalDistanceKm = 0.0,
                 totalDurationSeconds = 0L,
                 pointCount = 0,
-                stopCount = 0
+                stopCount = 0,
+                source = JourneySource.DEMO
             )
         )
 
@@ -221,7 +223,8 @@ object SampleDataSeeder {
                 maxSpeedKmh = maxSpeed,
                 averageSpeedKmh = (totalDistKm / (totalDurationSec / 3600.0) * 10).roundToInt() / 10.0,
                 dominantMode = dominantMode,
-                highlightPlaceName = highlightPlace
+                highlightPlaceName = highlightPlace,
+                source = JourneySource.DEMO
             )
         )
 

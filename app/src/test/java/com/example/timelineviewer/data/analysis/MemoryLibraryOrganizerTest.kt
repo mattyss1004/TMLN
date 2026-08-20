@@ -1,6 +1,7 @@
 package com.example.timelineviewer.data.analysis
 
 import com.example.timelineviewer.data.model.Journey
+import com.example.timelineviewer.data.model.JourneySource
 import com.example.timelineviewer.data.model.TransportMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -68,6 +69,22 @@ class MemoryLibraryOrganizerTest {
         )
 
         assertEquals(listOf(transit.id, driving.id, walkingFavorite.id), result.map { it.id })
+    }
+
+    @Test
+    fun `source sections keep demo records separate from imported daily journeys`() {
+        val demo = walkingFavorite.copy(source = JourneySource.DEMO)
+        val importedA = driving.copy(source = JourneySource.IMPORTED)
+        val importedB = transit.copy(source = JourneySource.IMPORTED)
+
+        val sections = MemoryLibraryOrganizer.sourceSections(
+            listOf(importedA, demo, importedB),
+            ZoneOffset.UTC
+        )
+
+        assertEquals(listOf("Test journeys (1)", "Imported journeys (2)"), sections.map { it.title })
+        assertEquals(listOf(demo.id), sections.first().sections.flatMap { it.journeys }.map { it.id })
+        assertEquals(setOf(importedA.id, importedB.id), sections.last().sections.flatMap { it.journeys }.map { it.id }.toSet())
     }
 
     @Test

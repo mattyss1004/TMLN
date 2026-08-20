@@ -35,7 +35,7 @@ class TimelineParserTest {
 
         assertNotNull(result)
         requireNotNull(result).also { parsed ->
-            assertEquals("Prague walk", parsed.journey.title)
+            assertTrue(parsed.journey.title.startsWith("Prague walk —"))
             // The parser intentionally de-duplicates and simplifies coincident activity/visit
             // endpoints, so the semantic guarantee is a navigable route rather than raw count.
             assertTrue(parsed.points.size >= 2)
@@ -88,12 +88,37 @@ class TimelineParserTest {
 
         assertNotNull(result)
         requireNotNull(result).also { parsed ->
-            assertEquals("Semantic export", parsed.journey.title)
+            assertTrue(parsed.journey.title.startsWith("Semantic export —"))
             assertTrue(parsed.points.size >= 3)
             assertTrue(parsed.points.zipWithNext().all { (left, right) -> left.timestamp <= right.timestamp })
             assertTrue(parsed.segments.any { it.mode == TransportMode.TRANSIT })
             assertEquals("Home", parsed.stops.single().name)
         }
+    }
+
+    @Test
+    fun `splits a multi-day export into one journey per local calendar day`() {
+        val json = """
+            {
+              "locations": [
+                {"latitude": 50.10, "longitude": 14.40, "timestamp": "2026-07-25T10:00:00Z"},
+                {"latitude": 50.11, "longitude": 14.41, "timestamp": "2026-07-25T10:10:00Z"},
+                {"latitude": 50.12, "longitude": 14.42, "timestamp": "2026-07-26T10:00:00Z"},
+                {"latitude": 50.13, "longitude": 14.43, "timestamp": "2026-07-26T10:10:00Z"}
+              ]
+            }
+        """.trimIndent()
+
+        val journeys = TimelineParser.parseTimelineJourneys(
+            reader = java.io.StringReader(json),
+            defaultTitle = "My timeline",
+            zoneId = java.time.ZoneId.of("UTC")
+        )
+
+        assertEquals(2, journeys.size)
+        assertEquals("My timeline — Jul 25, 2026", journeys[0].journey.title)
+        assertEquals("My timeline — Jul 26, 2026", journeys[1].journey.title)
+        assertTrue(journeys.all { it.points.size >= 2 })
     }
 
     @Test
