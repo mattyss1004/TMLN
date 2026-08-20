@@ -131,6 +131,7 @@ class AppDatabaseMigrationTest {
         assertEquals(JourneySource.IMPORTED, database.journeyDao().getJourneyById(99L)?.source)
         database.close()
         context.deleteDatabase(databaseName)
+        Unit
     }
 
     private fun insertVersion5Journey(database: SupportSQLiteDatabase, id: Long, title: String) {
