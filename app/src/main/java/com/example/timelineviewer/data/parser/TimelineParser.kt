@@ -97,17 +97,250 @@ object TimelineParser {
         val end: Long = 0L
     )
 
+    private data class SemanticActivityData(
+        val start: LocationData = LocationData(),
+        val end: LocationData = LocationData(),
+        val mode: TransportMode? = null
+    )
+
+    private data class SemanticVisitData(
+        val location: LocationData = LocationData(),
+        val name: String? = null
+    )
+
+    private data class SemanticModeInterval(
+        val start: Long,
+        val end: Long,
+        val mode: TransportMode
+    )
+
     private fun parseRootObject(reader: JsonReader, output: MutableList<RawPoint>) {
         reader.beginObject()
         while (reader.hasNext()) {
             when (reader.nextName()) {
                 "timelineObjects" -> parseTimelineObjects(reader, output)
+                "semanticSegments" -> parseSemanticSegments(reader, output)
                 "locations" -> parseRawLocations(reader, output)
                 "features" -> parseGeoJsonFeatures(reader, output)
                 else -> reader.skipValue()
             }
         }
         reader.endObject()
+    }
+
+    private fun parseSemanticSegments(reader: JsonReader, output: MutableList<RawPoint>) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return
+        }
+        val outputStart = output.size
+        val modeIntervals = mutableListOf<SemanticModeInterval>()
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() == JsonToken.BEGIN_OBJECT) {
+                parseSemanticSegment(reader, output)?.let(modeIntervals::add)
+            } else {
+                reader.skipValue()
+            }
+        }
+        reader.endArray()
+
+        if (modeIntervals.isNotEmpty()) {
+            for (index in outputStart until output.size) {
+                val point = output[index]
+                if (point.modeOverride == null) {
+                    val mode = modeIntervals.firstOrNull { point.timestamp in it.start..it.end }?.mode
+                    if (mode != null) output[index] = point.copy(modeOverride = mode)
+                }
+            }
+        }
+    }
+
+    private fun parseSemanticSegment(reader: JsonReader, output: MutableList<RawPoint>): SemanticModeInterval? {
+        var startTime = 0L
+        var endTime = 0L
+        var activity: SemanticActivityData? = null
+        var visit: SemanticVisitData? = null
+        val timelinePoints = mutableListOf<RawPoint>()
+
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "startTime" -> startTime = parseTimestamp(reader.nextNullableString())
+                "endTime" -> endTime = parseTimestamp(reader.nextNullableString())
+                "activity" -> activity = readSemanticActivity(reader)
+                "visit" -> visit = readSemanticVisit(reader)
+                "timelinePath" -> readSemanticTimelinePath(reader, timelinePoints)
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+
+        activity?.let { value ->
+            if (value.start.isValid()) {
+                appendPoint(output, RawPoint(value.start.lat, value.start.lng, startTime, modeOverride = value.mode))
+            }
+            if (value.end.isValid()) {
+                appendPoint(
+                    output,
+                    RawPoint(
+                        value.end.lat,
+                        value.end.lng,
+                        endTime.coerceAtLeast(startTime),
+                        modeOverride = value.mode
+                    )
+                )
+            }
+        }
+        timelinePoints.forEach { appendPoint(output, it) }
+        visit?.let { value ->
+            if (value.location.isValid()) {
+                val name = value.name ?: "Visited place"
+                appendPoint(output, RawPoint(value.location.lat, value.location.lng, startTime, true, name))
+                appendPoint(
+                    output,
+                    RawPoint(
+                        value.location.lat,
+                        value.location.lng,
+                        endTime.coerceAtLeast(startTime + 1L),
+                        true,
+                        name
+                    )
+                )
+            }
+        }
+        val mode = activity?.mode
+        return mode
+            ?.takeIf { startTime > 0L && endTime >= startTime }
+            ?.let { SemanticModeInterval(startTime, endTime, it) }
+    }
+
+    private fun readSemanticActivity(reader: JsonReader): SemanticActivityData {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return SemanticActivityData()
+        }
+        var start = LocationData()
+        var end = LocationData()
+        var mode: TransportMode? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "start" -> start = readSemanticLocation(reader)
+                "end" -> end = readSemanticLocation(reader)
+                "topCandidate" -> mode = readSemanticActivityMode(reader) ?: mode
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return SemanticActivityData(start, end, mode)
+    }
+
+    private fun readSemanticVisit(reader: JsonReader): SemanticVisitData {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return SemanticVisitData()
+        }
+        var location = LocationData()
+        var semanticType: String? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "topCandidate" -> {
+                    if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                        reader.skipValue()
+                    } else {
+                        reader.beginObject()
+                        while (reader.hasNext()) {
+                            when (reader.nextName()) {
+                                "placeLocation" -> location = readSemanticLocation(reader)
+                                "semanticType" -> semanticType = reader.nextNullableString()
+                                else -> reader.skipValue()
+                            }
+                        }
+                        reader.endObject()
+                    }
+                }
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        val name = semanticType
+            ?.replace('_', ' ')
+            ?.lowercase()
+            ?.replaceFirstChar { it.titlecase() }
+        return SemanticVisitData(location, name)
+    }
+
+    private fun readSemanticActivityMode(reader: JsonReader): TransportMode? {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return null
+        }
+        var mode: TransportMode? = null
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "type" -> mode = transportModeFor(reader.nextNullableString())
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return mode
+    }
+
+    private fun readSemanticLocation(reader: JsonReader): LocationData {
+        if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+            reader.skipValue()
+            return LocationData()
+        }
+        var location = LocationData()
+        reader.beginObject()
+        while (reader.hasNext()) {
+            when (reader.nextName()) {
+                "latLng" -> location = parseSemanticLatLng(reader.nextNullableString())
+                else -> reader.skipValue()
+            }
+        }
+        reader.endObject()
+        return location
+    }
+
+    private fun readSemanticTimelinePath(reader: JsonReader, output: MutableList<RawPoint>) {
+        if (reader.peek() != JsonToken.BEGIN_ARRAY) {
+            reader.skipValue()
+            return
+        }
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                reader.skipValue()
+                continue
+            }
+            var location = LocationData()
+            var timestamp = 0L
+            reader.beginObject()
+            while (reader.hasNext()) {
+                when (reader.nextName()) {
+                    "point" -> location = parseSemanticLatLng(reader.nextNullableString())
+                    "time" -> timestamp = parseTimestamp(reader.nextNullableString())
+                    else -> reader.skipValue()
+                }
+            }
+            reader.endObject()
+            if (location.isValid()) appendPoint(output, RawPoint(location.lat, location.lng, timestamp))
+        }
+        reader.endArray()
+    }
+
+    private fun parseSemanticLatLng(value: String?): LocationData {
+        val parts = value
+            ?.replace("°", "")
+            ?.split(',')
+            ?.map(String::trim)
+            ?: return LocationData()
+        if (parts.size != 2) return LocationData()
+        return LocationData(parts[0].toDoubleOrNull() ?: 0.0, parts[1].toDoubleOrNull() ?: 0.0)
     }
 
     private fun parseTimelineObjects(reader: JsonReader, output: MutableList<RawPoint>) {
@@ -732,7 +965,7 @@ object TimelineParser {
         "WALKING", "ON_FOOT", "RUNNING" -> TransportMode.WALKING
         "CYCLING" -> TransportMode.CYCLING
         "IN_PASSENGER_VEHICLE", "DRIVING", "MOTORCYCLING" -> TransportMode.DRIVING
-        "IN_BUS", "IN_TRAIN", "SUBWAY", "TRAM", "FLYING" -> TransportMode.TRANSIT
+        "IN_BUS", "IN_TRAIN", "IN_SUBWAY", "IN_TRAM", "SUBWAY", "TRAM", "FLYING" -> TransportMode.TRANSIT
         else -> null
     }
 
