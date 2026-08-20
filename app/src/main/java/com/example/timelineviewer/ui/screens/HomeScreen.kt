@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.timelineviewer.data.analysis.JourneyLibraryItem
+import com.example.timelineviewer.data.analysis.JourneyTransportSummary
 import com.example.timelineviewer.data.analysis.MemoryLibraryFilter
 import com.example.timelineviewer.data.analysis.MemoryLibraryOrganizer
 import com.example.timelineviewer.data.analysis.MemoryLibrarySort
@@ -218,9 +219,11 @@ fun HomeScreen(
                                 )
                             }
                             items(section.journeys, key = { it.id }) { journey ->
+                                val summary = libraryItemByJourneyId[journey.id]?.transportSummary
+                                    ?: JourneyTransportSummary(listOf(journey.dominantMode))
                                 JourneyCard(
                                     journey = journey,
-                                    transportSummary = libraryItemByJourneyId.getValue(journey.id).transportSummary,
+                                    transportSummary = summary,
                                     isSelected = selectedIds.contains(journey.id),
                                     isSelectionMode = isSelectionMode,
                                     onSelectToggle = { onToggleSelect(journey.id) },
