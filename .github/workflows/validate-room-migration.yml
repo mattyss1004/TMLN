@@ -1,4 +1,4 @@
-name: Validate Room migration
+name: Validate Room migrations
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   validate-v4-to-v5-migration:
-    name: Validate v4 to v5 archive migration
+    name: Validate archive database migrations
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -31,7 +31,7 @@ jobs:
           test -n "$MAPBOX_ACCESS_TOKEN" || { echo "MAPBOX_ACCESS_TOKEN repository secret is missing."; exit 1; }
           test -n "$MAPBOX_DOWNLOADS_TOKEN" || { echo "MAPBOX_DOWNLOADS_TOKEN repository secret is missing."; exit 1; }
 
-      - name: Run v4 to v5 Room migration test
+      - name: Run Room migration tests
         uses: reactivecircus/android-emulator-runner@v2
         env:
           MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
