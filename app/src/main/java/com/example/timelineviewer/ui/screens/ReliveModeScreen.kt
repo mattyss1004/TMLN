@@ -53,6 +53,7 @@ import com.example.timelineviewer.data.model.JourneyDetailData
 import com.example.timelineviewer.ui.components.InteractiveMapView
 import com.example.timelineviewer.ui.map.JourneyBaseStyle
 import com.example.timelineviewer.ui.map.JourneyCameraMode
+import com.example.timelineviewer.ui.map.JourneySceneMood
 import com.example.timelineviewer.ui.map.MapExperienceState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -396,7 +397,7 @@ private fun ReliveMapControlDeck(
                 }
                 item {
                     FilterChip(
-                        selected = mapExperience.sceneMood != com.example.timelineviewer.ui.map.JourneySceneMood.DAY,
+                        selected = mapExperience.sceneMood != JourneySceneMood.DAY,
                         onClick = onCycleSceneMood,
                         label = { Text(mapExperience.sceneMood.label, style = MaterialTheme.typography.labelSmall) }
                     )
