@@ -24,6 +24,7 @@ import com.example.timelineviewer.ui.map.JourneyCameraMode
 import com.example.timelineviewer.ui.map.JourneySceneMood
 import com.example.timelineviewer.ui.map.MapExperienceState
 import com.mapbox.geojson.Point
+import com.mapbox.maps.MapboxExperimental
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.extension.compose.MapboxMap
 import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
@@ -35,6 +36,7 @@ import com.mapbox.maps.extension.compose.style.standard.MapboxStandardSatelliteS
 import com.mapbox.maps.extension.compose.style.standard.MapboxStandardStyle
 import com.mapbox.maps.extension.compose.style.standard.rememberStandardSatelliteStyleState
 import com.mapbox.maps.extension.compose.style.standard.rememberStandardStyleState
+import com.mapbox.maps.plugin.animation.MapAnimationOptions
 import kotlin.math.abs
 
 /**
@@ -42,6 +44,7 @@ import kotlin.math.abs
  * basemap. It keeps all of the project-specific route, stop, and playback data local while Mapbox
  * supplies the interactive terrain, buildings, labels, and camera projection.
  */
+@OptIn(MapboxExperimental::class)
 @Composable
 fun InteractiveMapView(
     points: List<RoutePoint>,
@@ -87,16 +90,21 @@ fun InteractiveMapView(
         }
     }
 
-    val activePoint = points[currentPointIndex.coerceIn(0, points.lastIndex)]
-    val activePose = remember(points, currentPointIndex, mapExperience.cameraMode) {
-        CinematicCameraDirector.poseFor(mapExperience.cameraMode, points, currentPointIndex)!!
+    val safeIndex = currentPointIndex.coerceIn(0, points.lastIndex)
+    val activePoint = points[safeIndex]
+    val activePose = remember(points, safeIndex, mapExperience.cameraMode) {
+        CinematicCameraDirector.poseFor(mapExperience.cameraMode, points, safeIndex)!!
     }
 
-    // One camera director owns playback framing. Overview deliberately stays static while the
-    // other modes follow the actual active route point using their distinct pose.
-    LaunchedEffect(currentPointIndex, isPlaying, mapExperience.cameraMode, activePose) {
-        if (isPlaying && mapExperience.cameraMode != JourneyCameraMode.OVERVIEW) {
-            mapViewportState.setCameraOptions(activePose.toMapboxCameraOptions())
+    // Smoothly follow the active route point whenever camera mode is in a tracking camera view
+    LaunchedEffect(safeIndex, mapExperience.cameraMode) {
+        if (mapExperience.cameraMode != JourneyCameraMode.OVERVIEW) {
+            mapViewportState.easeTo(
+                cameraOptions = activePose.toMapboxCameraOptions(),
+                animationOptions = MapAnimationOptions.mapAnimationOptions {
+                    duration(220L)
+                }
+            )
         }
     }
 
@@ -117,28 +125,26 @@ fun InteractiveMapView(
                 ) {
                     if (mapExperience.baseStyle == JourneyBaseStyle.SATELLITE) {
                         MapboxStandardSatelliteStyle(
-                        standardSatelliteStyleState = rememberStandardSatelliteStyleState {
-                            configurationsState.apply {
-                                lightPreset = mapExperience.sceneMood.toLightPreset()
-                                showPlaceLabels = BooleanValue(mapExperience.showLabels)
-                                showRoadLabels = BooleanValue(mapExperience.showLabels)
-                                showPointOfInterestLabels = BooleanValue(mapExperience.showLabels)
+                            standardSatelliteStyleState = rememberStandardSatelliteStyleState {
+                                configurationsState.apply {
+                                    lightPreset = mapExperience.sceneMood.toLightPreset()
+                                    showPlaceLabels = BooleanValue(mapExperience.showLabels)
+                                    showRoadLabels = BooleanValue(mapExperience.showLabels)
+                                    showPointOfInterestLabels = BooleanValue(mapExperience.showLabels)
+                                }
                             }
-                        }
                         )
                     } else {
                         MapboxStandardStyle(
-                        standardStyleState = rememberStandardStyleState {
-                            configurationsState.apply {
-                                // Standard supplies actual buildings, trees, terrain, and landmarks;
-                                // the user-visible scene state controls those supported layers.
-                                show3dObjects = BooleanValue(mapExperience.showThreeDObjects)
-                                lightPreset = mapExperience.sceneMood.toLightPreset()
-                                showPlaceLabels = BooleanValue(mapExperience.showLabels)
-                                showRoadLabels = BooleanValue(mapExperience.showLabels)
-                                showPointOfInterestLabels = BooleanValue(mapExperience.showLabels)
+                            standardStyleState = rememberStandardStyleState {
+                                configurationsState.apply {
+                                    show3dObjects = BooleanValue(mapExperience.showThreeDObjects)
+                                    lightPreset = mapExperience.sceneMood.toLightPreset()
+                                    showPlaceLabels = BooleanValue(mapExperience.showLabels)
+                                    showRoadLabels = BooleanValue(mapExperience.showLabels)
+                                    showPointOfInterestLabels = BooleanValue(mapExperience.showLabels)
+                                }
                             }
-                        }
                         )
                     }
                 }
@@ -147,7 +153,7 @@ fun InteractiveMapView(
             RouteAnnotations(
                 points = points,
                 segments = segments,
-                playedPointIndex = playedPointIndex.takeIf { mapExperience.progressiveRouteEnabled }
+                playedPointIndex = (playedPointIndex ?: safeIndex).takeIf { mapExperience.progressiveRouteEnabled }
             )
 
             if (mapExperience.showStops) {
@@ -179,8 +185,13 @@ fun InteractiveMapView(
                 isExpanded = isExpanded,
                 onCameraModeSelect = { mode ->
                     onCameraModeChange(mode)
-                    val pose = CinematicCameraDirector.poseFor(mode, points, currentPointIndex)!!
-                    mapViewportState.easeTo(pose.toMapboxCameraOptions())
+                    val pose = CinematicCameraDirector.poseFor(mode, points, safeIndex)!!
+                    mapViewportState.easeTo(
+                        cameraOptions = pose.toMapboxCameraOptions(),
+                        animationOptions = MapAnimationOptions.mapAnimationOptions {
+                            duration(400L)
+                        }
+                    )
                 },
                 onMapStyleToggle = onMapStyleToggle,
                 onCycleSceneMood = onCycleSceneMood,
@@ -197,7 +208,7 @@ fun InteractiveMapView(
         if (showActiveBadge) {
             ActiveLocationBadge(
                 activePoint = activePoint,
-                currentPointIndex = currentPointIndex,
+                currentPointIndex = safeIndex,
                 pointCount = points.size,
                 cameraMode = mapExperience.cameraMode,
                 modifier = Modifier
@@ -221,8 +232,7 @@ private fun RouteAnnotations(
     segments: List<TransportSegment>,
     playedPointIndex: Int?
 ) {
-    // Route geometry is transformed once per loaded journey. During a real replay, the completed
-    // portion is drawn above a quiet route preview so progress is visible rather than implied.
+    // Route geometry is transformed once per loaded journey.
     val routeSegments = remember(points, segments) { prepareRouteSegments(points, segments) }
     val allRoutePoints = remember(points) {
         points.map { Point.fromLngLat(it.longitude, it.latitude) }
@@ -549,25 +559,4 @@ private fun JourneySceneMood.toLightPreset(): LightPresetValue = when (this) {
     JourneySceneMood.DUSK -> LightPresetValue.DUSK
     JourneySceneMood.NIGHT -> LightPresetValue.NIGHT
     JourneySceneMood.DAWN -> LightPresetValue.DAWN
-}
-
-private fun routeCenter(points: List<RoutePoint>): Point = Point.fromLngLat(
-    points.map { it.longitude }.average(),
-    points.map { it.latitude }.average()
-)
-
-private fun routeOverviewZoom(points: List<RoutePoint>): Double {
-    val latSpan = points.maxOf { it.latitude } - points.minOf { it.latitude }
-    val lonSpan = points.maxOf { it.longitude } - points.minOf { it.longitude }
-    val span = maxOf(abs(latSpan), abs(lonSpan))
-    return when {
-        span < 0.003 -> 15.5
-        span < 0.01 -> 14.0
-        span < 0.04 -> 12.5
-        span < 0.12 -> 11.0
-        span < 0.4 -> 9.5
-        span < 1.2 -> 8.0
-        span < 4.0 -> 6.5
-        else -> 5.0
-    }
 }
