@@ -91,14 +91,15 @@ object CinematicCameraDirector {
     private fun overviewZoom(points: List<RoutePoint>): Double {
         val latSpan = points.maxOf { it.latitude } - points.minOf { it.latitude }
         val lonSpan = points.maxOf { it.longitude } - points.minOf { it.longitude }
-        return when (maxOf(abs(latSpan), abs(lonSpan))) {
-            in 0.0..<0.003 -> 15.5
-            in 0.003..<0.01 -> 14.0
-            in 0.01..<0.04 -> 12.5
-            in 0.04..<0.12 -> 11.0
-            in 0.12..<0.4 -> 9.5
-            in 0.4..<1.2 -> 8.0
-            in 1.2..<4.0 -> 6.5
+        val maxSpan = maxOf(abs(latSpan), abs(lonSpan))
+        return when {
+            maxSpan < 0.003 -> 15.5
+            maxSpan < 0.01 -> 14.0
+            maxSpan < 0.04 -> 12.5
+            maxSpan < 0.12 -> 11.0
+            maxSpan < 0.4 -> 9.5
+            maxSpan < 1.2 -> 8.0
+            maxSpan < 4.0 -> 6.5
             else -> 5.0
         }
     }
