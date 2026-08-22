@@ -1,5 +1,5 @@
-package com.example.timelineviewer.ui.map
 
+import com.example.timelineviewer.data.analysis.RelivePlaybackClock
 import com.example.timelineviewer.data.model.RoutePoint
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -24,11 +24,39 @@ object CinematicCameraDirector {
         activePointIndex: Int,
         showThreeDObjects: Boolean = true
     ): JourneyCameraPose? {
+        return poseForInterpolated(mode, points, activePointIndex, 0f, null, showThreeDObjects)
+    }
+
+    fun poseForInterpolated(
+        mode: JourneyCameraMode,
+        points: List<RoutePoint>,
+        activePointIndex: Int,
+        subIndexProgress: Float = 0f,
+        previousBearing: Double? = null,
+        showThreeDObjects: Boolean = true
+    ): JourneyCameraPose? {
         if (points.isEmpty()) return null
         val safeIndex = activePointIndex.coerceIn(0, points.lastIndex)
-        val active = points[safeIndex]
-        val effectiveBearing = calculateSmoothedBearing(points, safeIndex)
-        val activeSpeed = active.speedKmh.toDouble().coerceAtLeast(0.0)
+
+        val interpolatedActivePoint = if (points.size >= 4 && safeIndex < points.lastIndex) {
+            val p0 = points[(safeIndex - 1).coerceAtLeast(0)]
+            val p1 = points[safeIndex]
+            val p2 = points[(safeIndex + 1).coerceAtMost(points.lastIndex)]
+            val p3 = points[(safeIndex + 2).coerceAtMost(points.lastIndex)]
+            RelivePlaybackClock.interpolatePoint(p0, p1, p2, p3, subIndexProgress)
+        } else {
+            points[safeIndex]
+        }
+
+        val rawBearing = calculateSmoothedBearing(points, safeIndex)
+        val activeSpeed = interpolatedActivePoint.speedKmh.toDouble().coerceAtLeast(0.0)
+
+        // Angular damping: pan turns smoothly rather than snapping abruptly
+        val effectiveBearing = if (previousBearing != null && mode != JourneyCameraMode.OVERVIEW) {
+            dampBearing(previousBearing, rawBearing, smoothingFactor = 0.25)
+        } else {
+            rawBearing
+        }
 
         // Dynamic zoom and altitude scaling based on travel velocity
         val speedZoomOffset = (activeSpeed / 75.0).coerceIn(0.0, 2.2)
@@ -44,13 +72,13 @@ object CinematicCameraDirector {
 
         val bufferedTarget = if (tileBufferDistanceMeters > 0.0) {
             offsetCoordinate(
-                lat = active.latitude,
-                lon = active.longitude,
+                lat = interpolatedActivePoint.latitude,
+                lon = interpolatedActivePoint.longitude,
                 bearingDeg = effectiveBearing,
                 distanceMeters = tileBufferDistanceMeters
             )
         } else {
-            Pair(active.latitude, active.longitude)
+            Pair(interpolatedActivePoint.latitude, interpolatedActivePoint.longitude)
         }
 
         val targetLat = bufferedTarget.first
@@ -86,6 +114,13 @@ object CinematicCameraDirector {
                 bearing = normalizeBearing(effectiveBearing + 65.0 + (safeIndex % 360) * 0.4)
             )
         }
+    }
+
+    private fun dampBearing(currentBearing: Double, targetBearing: Double, smoothingFactor: Double): Double {
+        var diff = targetBearing - currentBearing
+        while (diff < -180.0) diff += 360.0
+        while (diff > 180.0) diff -= 360.0
+        return normalizeBearing(currentBearing + diff * smoothingFactor.coerceIn(0.05, 1.0))
     }
 
     private fun offsetCoordinate(
