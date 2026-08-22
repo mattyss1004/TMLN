@@ -1,3 +1,4 @@
+package com.example.timelineviewer.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -79,7 +80,12 @@ fun InteractiveMapView(
     }
 
     val initialPose = remember(points) {
-        CinematicCameraDirector.poseFor(JourneyCameraMode.OVERVIEW, points, 0)!!
+        CinematicCameraDirector.poseFor(
+            JourneyCameraMode.OVERVIEW,
+            points,
+            0,
+            mapExperience.showThreeDObjects
+        )!!
     }
     val mapViewportState = rememberMapViewportState {
         setCameraOptions {
@@ -92,14 +98,25 @@ fun InteractiveMapView(
 
     val safeIndex = currentPointIndex.coerceIn(0, points.lastIndex)
     val activePoint = points[safeIndex]
-    val activePose = remember(points, safeIndex, mapExperience.cameraMode) {
-        CinematicCameraDirector.poseFor(mapExperience.cameraMode, points, safeIndex)!!
+    val activePose = remember(points, safeIndex, mapExperience.cameraMode, mapExperience.showThreeDObjects) {
+        CinematicCameraDirector.poseFor(
+            mapExperience.cameraMode,
+            points,
+            safeIndex,
+            mapExperience.showThreeDObjects
+        )!!
     }
 
-    // Dynamic ease duration to align camera tracking speed with replay pace
-    val cameraEaseDuration = remember(isPlaying) { if (isPlaying) 180L else 320L }
+    // Dynamic ease duration to align camera tracking speed and 3D asset buffering with replay pace
+    val cameraEaseDuration = remember(isPlaying, mapExperience.showThreeDObjects) {
+        when {
+            isPlaying && mapExperience.showThreeDObjects -> 220L
+            isPlaying -> 180L
+            else -> 320L
+        }
+    }
 
-    LaunchedEffect(safeIndex, mapExperience.cameraMode) {
+    LaunchedEffect(safeIndex, mapExperience.cameraMode, mapExperience.showThreeDObjects) {
         if (mapExperience.cameraMode != JourneyCameraMode.OVERVIEW) {
             mapViewportState.easeTo(
                 cameraOptions = activePose.toMapboxCameraOptions(),
@@ -185,7 +202,12 @@ fun InteractiveMapView(
                 isExpanded = isExpanded,
                 onCameraModeSelect = { mode ->
                     onCameraModeChange(mode)
-                    val pose = CinematicCameraDirector.poseFor(mode, points, safeIndex)!!
+                    val pose = CinematicCameraDirector.poseFor(
+                        mode,
+                        points,
+                        safeIndex,
+                        mapExperience.showThreeDObjects
+                    )!!
                     mapViewportState.easeTo(
                         cameraOptions = pose.toMapboxCameraOptions(),
                         animationOptions = MapAnimationOptions.mapAnimationOptions {

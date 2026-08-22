@@ -1,3 +1,4 @@
+package com.example.timelineviewer.ui.map
 
 import com.example.timelineviewer.data.model.RoutePoint
 import kotlin.math.abs
@@ -15,10 +16,13 @@ data class JourneyCameraPose(
 )
 
 object CinematicCameraDirector {
+    private const val EARTH_RADIUS_METERS = 6_371_000.0
+
     fun poseFor(
         mode: JourneyCameraMode,
         points: List<RoutePoint>,
-        activePointIndex: Int
+        activePointIndex: Int,
+        showThreeDObjects: Boolean = true
     ): JourneyCameraPose? {
         if (points.isEmpty()) return null
         val safeIndex = activePointIndex.coerceIn(0, points.lastIndex)
@@ -29,6 +33,29 @@ object CinematicCameraDirector {
         // Dynamic zoom adjustment based on travel velocity
         val speedZoomOffset = (activeSpeed / 80.0).coerceIn(0.0, 1.8)
 
+        // 3D Asset Pacing & Tile Loading Buffer:
+        // Project camera target slightly ahead along bearing so 3D tiles & building models
+        // pre-stream ahead of movement during high-speed replay.
+        val tileBufferDistanceMeters = if (showThreeDObjects && mode != JourneyCameraMode.OVERVIEW) {
+            (activeSpeed * 0.85).coerceIn(15.0, 120.0)
+        } else {
+            0.0
+        }
+
+        val bufferedTarget = if (tileBufferDistanceMeters > 0.0) {
+            offsetCoordinate(
+                lat = active.latitude,
+                lon = active.longitude,
+                bearingDeg = effectiveBearing,
+                distanceMeters = tileBufferDistanceMeters
+            )
+        } else {
+            Pair(active.latitude, active.longitude)
+        }
+
+        val targetLat = bufferedTarget.first
+        val targetLon = bufferedTarget.second
+
         return when (mode) {
             JourneyCameraMode.OVERVIEW -> JourneyCameraPose(
                 latitude = points.map { it.latitude }.average(),
@@ -38,28 +65,53 @@ object CinematicCameraDirector {
                 bearing = 0.0
             )
             JourneyCameraMode.FOLLOW -> JourneyCameraPose(
-                latitude = active.latitude,
-                longitude = active.longitude,
+                latitude = targetLat,
+                longitude = targetLon,
                 zoom = (16.4 - speedZoomOffset).coerceIn(13.5, 17.5),
-                pitch = 58.0,
+                pitch = if (showThreeDObjects) 62.0 else 58.0,
                 bearing = normalizeBearing(effectiveBearing)
             )
             JourneyCameraMode.CINEMA -> JourneyCameraPose(
-                latitude = active.latitude,
-                longitude = active.longitude,
+                latitude = targetLat,
+                longitude = targetLon,
                 zoom = (15.5 - speedZoomOffset * 0.8).coerceIn(13.0, 16.8),
                 pitch = (70.0 + speedZoomOffset * 3.0).coerceAtMost(78.0),
                 bearing = normalizeBearing(effectiveBearing - 18.0)
             )
             JourneyCameraMode.ORBIT -> JourneyCameraPose(
-                latitude = active.latitude,
-                longitude = active.longitude,
+                latitude = targetLat,
+                longitude = targetLon,
                 zoom = (15.6 - speedZoomOffset * 0.5).coerceIn(13.2, 17.0),
                 pitch = 64.0,
                 bearing = normalizeBearing(effectiveBearing + 65.0 + (safeIndex % 360) * 0.4)
             )
         }
     }
+
+    private fun offsetCoordinate(
+        lat: Double,
+        lon: Double,
+        bearingDeg: Double,
+        distanceMeters: Double
+    ): Pair<Double, Double> {
+        val latRad = Math.toRadians(lat)
+        val lonRad = Math.toRadians(lon)
+        val bearingRad = Math.toRadians(bearingDeg)
+        val angularDistance = distanceMeters / EARTH_RADIUS_METERS
+
+        val newLatRad = asinSafe(
+            sin(latRad) * cos(angularDistance) +
+                    cos(latRad) * sin(angularDistance) * cos(bearingRad)
+        )
+        val newLonRad = lonRad + atan2(
+            sin(bearingRad) * sin(angularDistance) * cos(latRad),
+            cos(angularDistance) - sin(latRad) * sin(newLatRad)
+        )
+
+        return Pair(Math.toDegrees(newLatRad), Math.toDegrees(newLonRad))
+    }
+
+    private fun asinSafe(x: Double): Double = kotlin.math.asin(x.coerceIn(-1.0, 1.0))
 
     private fun calculateSmoothedBearing(points: List<RoutePoint>, index: Int): Double {
         val current = points[index]
