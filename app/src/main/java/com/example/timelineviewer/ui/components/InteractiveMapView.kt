@@ -1,4 +1,3 @@
-package com.example.timelineviewer.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -540,6 +539,7 @@ private fun EmptyMapState(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MapControlButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -548,26 +548,36 @@ private fun MapControlButton(
     testTag: String,
     selected: Boolean = false
 ) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        shadowElevation = 4.dp,
-        modifier = Modifier
-            .size(40.dp)
-            .testTag(testTag)
-            .semantics {
-                this.contentDescription = contentDescription
-                this.role = Role.Button
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = {
+            PlainTooltip {
+                Text(contentDescription)
             }
+        },
+        state = rememberTooltipState()
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-            )
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            shadowElevation = 4.dp,
+            modifier = Modifier
+                .size(40.dp)
+                .testTag(testTag)
+                .semantics {
+                    this.contentDescription = contentDescription
+                    this.role = Role.Button
+                }
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     }
 }

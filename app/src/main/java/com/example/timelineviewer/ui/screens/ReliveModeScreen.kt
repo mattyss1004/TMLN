@@ -1,4 +1,3 @@
-package com.example.timelineviewer.ui.screens
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -30,12 +29,17 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -62,6 +66,7 @@ import java.util.Locale
 /**
  * A distraction-free, one-pass replay that reuses only data held in the local journey record.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReliveModeScreen(
     detail: JourneyDetailData,
@@ -155,11 +160,17 @@ fun ReliveModeScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(
-                    onClick = onExit,
-                    modifier = Modifier.testTag("close_relive_mode")
+                TooltipBox(
+                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                    tooltip = { PlainTooltip { Text("Close Relive Mode") } },
+                    state = rememberTooltipState()
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close Relive Mode")
+                    IconButton(
+                        onClick = onExit,
+                        modifier = Modifier.testTag("close_relive_mode")
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close Relive Mode")
+                    }
                 }
             }
         }
@@ -278,21 +289,27 @@ fun ReliveModeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Surface(
-                            onClick = onPlayPauseToggle,
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .size(50.dp)
-                                .testTag("relive_play_pause")
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = { PlainTooltip { Text(if (isPlaying) "Pause relive" else "Play relive") } },
+                            state = rememberTooltipState()
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (isPlaying) "Pause relive" else "Play relive",
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                            Surface(
+                                onClick = onPlayPauseToggle,
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .testTag("relive_play_pause")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = if (isPlaying) "Pause relive" else "Play relive",
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
                             }
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -307,21 +324,27 @@ fun ReliveModeScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Surface(
-                            onClick = { nextMoment?.let { onSeekToIndex(it.pointIndex) } },
-                            enabled = nextMoment != null,
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            modifier = Modifier
-                                .size(50.dp)
-                                .testTag("relive_next_moment")
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = { PlainTooltip { Text("Next journey moment") } },
+                            state = rememberTooltipState()
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (nextMoment == null) Icons.Default.FastForward else Icons.Default.SkipNext,
-                                    contentDescription = "Next journey moment",
-                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
+                            Surface(
+                                onClick = { nextMoment?.let { onSeekToIndex(it.pointIndex) } },
+                                enabled = nextMoment != null,
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .testTag("relive_next_moment")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (nextMoment == null) Icons.Default.FastForward else Icons.Default.SkipNext,
+                                        contentDescription = "Next journey moment",
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
                             }
                         }
                     }
@@ -343,6 +366,12 @@ private fun ReliveMapControlDeck(
     onToggleStops: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val modes = listOf(
+        JourneyCameraMode.OVERVIEW to "Overview",
+        JourneyCameraMode.FOLLOW to "Follow 3D",
+        JourneyCameraMode.CINEMA to "Cinematic"
+    )
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -354,11 +383,18 @@ private fun ReliveMapControlDeck(
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                JourneyCameraMode.entries.forEach { mode ->
+                modes.forEach { (mode, label) ->
+                    val selected = mapExperience.cameraMode == mode
                     FilterChip(
-                        selected = mapExperience.cameraMode == mode,
+                        selected = selected,
                         onClick = { onCameraModeChange(mode) },
-                        label = { Text(mode.label, style = MaterialTheme.typography.labelSmall) },
+                        label = {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
