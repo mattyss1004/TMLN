@@ -1,3 +1,4 @@
+package com.example.timelineviewer.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -315,7 +316,7 @@ private fun PlaybackSpeedRow(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            listOf(0.5f, 1.0f, 1.5f, 2.0f, 4.0f).forEach { speed ->
+            listOf(0.5f, 1.0f, 2.0f, 4.0f).forEach { speed ->
                 FilterChip(
                     selected = playbackSpeed == speed,
                     onClick = { onSpeedChange(speed) },
