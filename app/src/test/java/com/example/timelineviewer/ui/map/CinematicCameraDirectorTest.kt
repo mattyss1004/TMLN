@@ -1,5 +1,8 @@
+package com.example.timelineviewer.ui.map
 
 import com.example.timelineviewer.data.model.RoutePoint
+import com.example.timelineviewer.ui.map.CinematicCameraDirector
+import com.example.timelineviewer.ui.map.JourneyCameraMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue

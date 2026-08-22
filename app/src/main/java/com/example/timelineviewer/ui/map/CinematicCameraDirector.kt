@@ -1,3 +1,4 @@
+package com.example.timelineviewer.ui.map
 
 import com.example.timelineviewer.data.analysis.RelivePlaybackClock
 import com.example.timelineviewer.data.model.RoutePoint

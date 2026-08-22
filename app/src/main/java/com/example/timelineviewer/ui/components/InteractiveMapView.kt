@@ -1,3 +1,4 @@
+package com.example.timelineviewer.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*

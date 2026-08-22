@@ -28,6 +28,7 @@ import com.example.timelineviewer.data.model.OfflineMapRegion
 import com.example.timelineviewer.data.model.OfflineRegionStatus
 import com.example.timelineviewer.data.model.Stop
 import com.example.timelineviewer.ui.components.*
+import com.example.timelineviewer.ui.components.InteractiveMapView
 import com.example.timelineviewer.ui.map.JourneyCameraMode
 import com.example.timelineviewer.ui.map.MapExperienceState
 import java.text.SimpleDateFormat

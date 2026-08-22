@@ -1,3 +1,4 @@
+package com.example.timelineviewer.data.analysis
 
 import com.example.timelineviewer.data.model.RoutePoint
 import kotlin.math.abs
