@@ -30,14 +30,14 @@ object CinematicCameraDirector {
         val effectiveBearing = calculateSmoothedBearing(points, safeIndex)
         val activeSpeed = active.speedKmh.toDouble().coerceAtLeast(0.0)
 
-        // Dynamic zoom adjustment based on travel velocity
-        val speedZoomOffset = (activeSpeed / 80.0).coerceIn(0.0, 1.8)
+        // Dynamic zoom and altitude scaling based on travel velocity
+        val speedZoomOffset = (activeSpeed / 75.0).coerceIn(0.0, 2.2)
 
         // 3D Asset Pacing & Tile Loading Buffer:
-        // Project camera target slightly ahead along bearing so 3D tiles & building models
-        // pre-stream ahead of movement during high-speed replay.
+        // Project camera target ahead along bearing to give Mapbox's vector rendering engine
+        // sufficient frame time and frustum lookahead to pre-stream 3D building meshes and terrain tiles.
         val tileBufferDistanceMeters = if (showThreeDObjects && mode != JourneyCameraMode.OVERVIEW) {
-            (activeSpeed * 0.85).coerceIn(15.0, 120.0)
+            (activeSpeed * 1.5 + 25.0).coerceIn(30.0, 250.0)
         } else {
             0.0
         }
@@ -67,22 +67,22 @@ object CinematicCameraDirector {
             JourneyCameraMode.FOLLOW -> JourneyCameraPose(
                 latitude = targetLat,
                 longitude = targetLon,
-                zoom = (16.4 - speedZoomOffset).coerceIn(13.5, 17.5),
-                pitch = if (showThreeDObjects) 62.0 else 58.0,
+                zoom = (16.2 - speedZoomOffset).coerceIn(13.0, 17.2),
+                pitch = if (showThreeDObjects) 55.0 else 52.0,
                 bearing = normalizeBearing(effectiveBearing)
             )
             JourneyCameraMode.CINEMA -> JourneyCameraPose(
                 latitude = targetLat,
                 longitude = targetLon,
-                zoom = (15.5 - speedZoomOffset * 0.8).coerceIn(13.0, 16.8),
-                pitch = (70.0 + speedZoomOffset * 3.0).coerceAtMost(78.0),
+                zoom = (15.2 - speedZoomOffset * 0.8).coerceIn(12.8, 16.5),
+                pitch = (60.0 + speedZoomOffset * 2.5).coerceAtMost(68.0),
                 bearing = normalizeBearing(effectiveBearing - 18.0)
             )
             JourneyCameraMode.ORBIT -> JourneyCameraPose(
                 latitude = targetLat,
                 longitude = targetLon,
-                zoom = (15.6 - speedZoomOffset * 0.5).coerceIn(13.2, 17.0),
-                pitch = 64.0,
+                zoom = (15.3 - speedZoomOffset * 0.5).coerceIn(13.0, 16.8),
+                pitch = 60.0,
                 bearing = normalizeBearing(effectiveBearing + 65.0 + (safeIndex % 360) * 0.4)
             )
         }
