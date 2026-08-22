@@ -1,4 +1,3 @@
-package com.example.timelineviewer.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -13,6 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.example.timelineviewer.BuildConfig
 import com.example.timelineviewer.data.model.RoutePoint
@@ -37,7 +40,6 @@ import com.mapbox.maps.extension.compose.style.standard.MapboxStandardStyle
 import com.mapbox.maps.extension.compose.style.standard.rememberStandardSatelliteStyleState
 import com.mapbox.maps.extension.compose.style.standard.rememberStandardStyleState
 import com.mapbox.maps.plugin.animation.MapAnimationOptions
-import kotlin.math.abs
 
 /**
  * A real Mapbox-based map canvas that renders imported journey geometry on the 3D Mapbox Standard
@@ -71,8 +73,6 @@ fun InteractiveMapView(
         return
     }
 
-    // No token is embedded in source control. Until a personal public token is supplied in
-    // local.properties, keep the app operational and present a clear setup path.
     if (!BuildConfig.MAPBOX_ACCESS_TOKEN_CONFIGURED) {
         MapboxConfigurationRequired(modifier)
         return
@@ -96,13 +96,15 @@ fun InteractiveMapView(
         CinematicCameraDirector.poseFor(mapExperience.cameraMode, points, safeIndex)!!
     }
 
-    // Smoothly follow the active route point whenever camera mode is in a tracking camera view
+    // Dynamic ease duration to align camera tracking speed with replay pace
+    val cameraEaseDuration = remember(isPlaying) { if (isPlaying) 180L else 320L }
+
     LaunchedEffect(safeIndex, mapExperience.cameraMode) {
         if (mapExperience.cameraMode != JourneyCameraMode.OVERVIEW) {
             mapViewportState.easeTo(
                 cameraOptions = activePose.toMapboxCameraOptions(),
                 animationOptions = MapAnimationOptions.mapAnimationOptions {
-                    duration(220L)
+                    duration(cameraEaseDuration)
                 }
             )
         }
@@ -162,8 +164,6 @@ fun InteractiveMapView(
                 }
             }
 
-            // The active traveller is rendered as a two-ring marker so that it remains visible
-            // over satellite imagery, dark map styling, and dense streets.
             val traveller = Point.fromLngLat(activePoint.longitude, activePoint.latitude)
             CircleAnnotation(point = traveller) {
                 circleRadius = 12.0
@@ -232,7 +232,6 @@ private fun RouteAnnotations(
     segments: List<TransportSegment>,
     playedPointIndex: Int?
 ) {
-    // Route geometry is transformed once per loaded journey.
     val routeSegments = remember(points, segments) { prepareRouteSegments(points, segments) }
     val allRoutePoints = remember(points) {
         points.map { Point.fromLngLat(it.longitude, it.latitude) }
@@ -341,70 +340,70 @@ private fun MapControlStack(
         ) {
             MapControlButton(
                 icon = if (mapExperience.baseStyle == JourneyBaseStyle.STANDARD) Icons.Default.SatelliteAlt else Icons.Default.Map,
-                contentDescription = "Toggle Map Style",
+                contentDescription = "Toggle satellite or standard map basemap",
                 onClick = onMapStyleToggle,
                 selected = mapExperience.baseStyle == JourneyBaseStyle.SATELLITE,
                 testTag = "map_style_toggle"
             )
             MapControlButton(
                 icon = Icons.Default.AutoAwesome,
-                contentDescription = "Cycle Day Dusk Night Dawn Scene",
+                contentDescription = "Cycle map lighting mood between day, dusk, night, dawn",
                 onClick = onCycleSceneMood,
                 selected = mapExperience.sceneMood != JourneySceneMood.DAY,
                 testTag = "cycle_scene_mood"
             )
             MapControlButton(
                 icon = Icons.Default.LocationCity,
-                contentDescription = "Toggle 3D Buildings and Terrain",
+                contentDescription = "Toggle 3D buildings and terrain objects",
                 onClick = onToggleThreeD,
                 selected = mapExperience.showThreeDObjects,
                 testTag = "toggle_3d_objects"
             )
             MapControlButton(
                 icon = if (mapExperience.showLabels) Icons.Default.Label else Icons.Default.LabelOff,
-                contentDescription = "Toggle Map Labels",
+                contentDescription = "Toggle map place and street labels",
                 onClick = onToggleLabels,
                 selected = mapExperience.showLabels,
                 testTag = "toggle_labels"
             )
             MapControlButton(
                 icon = if (mapExperience.showStops) Icons.Default.Place else Icons.Default.LocationOff,
-                contentDescription = "Toggle Stops",
+                contentDescription = "Toggle visibility of journey stop markers",
                 onClick = onToggleStops,
                 selected = mapExperience.showStops,
                 testTag = "toggle_stops"
             )
             MapControlButton(
                 icon = Icons.Default.Map,
-                contentDescription = "Route Overview",
+                contentDescription = "Set camera mode to overall route overview",
                 onClick = { onCameraModeSelect(JourneyCameraMode.OVERVIEW) },
                 selected = mapExperience.cameraMode == JourneyCameraMode.OVERVIEW,
                 testTag = "camera_overview"
             )
             MapControlButton(
                 icon = Icons.Default.MyLocation,
-                contentDescription = "Follow Traveller",
+                contentDescription = "Set camera mode to follow traveller position",
                 onClick = { onCameraModeSelect(JourneyCameraMode.FOLLOW) },
                 selected = mapExperience.cameraMode == JourneyCameraMode.FOLLOW,
                 testTag = "camera_follow"
             )
             MapControlButton(
                 icon = Icons.Default.AutoAwesome,
-                contentDescription = "Cinematic Traveller Camera",
+                contentDescription = "Set cinematic dynamic tracking camera mode",
                 onClick = { onCameraModeSelect(JourneyCameraMode.CINEMA) },
                 selected = mapExperience.cameraMode == JourneyCameraMode.CINEMA,
                 testTag = "camera_cinema"
             )
             MapControlButton(
                 icon = Icons.Default.Refresh,
-                contentDescription = "Orbit Traveller",
+                contentDescription = "Set orbiting dynamic camera mode",
                 onClick = { onCameraModeSelect(JourneyCameraMode.ORBIT) },
                 selected = mapExperience.cameraMode == JourneyCameraMode.ORBIT,
                 testTag = "camera_orbit"
             )
             MapControlButton(
                 icon = if (isExpanded) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                contentDescription = "Fullscreen",
+                contentDescription = "Toggle fullscreen map expand mode",
                 onClick = onToggleFullscreen,
                 testTag = "toggle_fullscreen"
             )
@@ -533,14 +532,18 @@ private fun MapControlButton(
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         shadowElevation = 4.dp,
         modifier = Modifier
-            .size(36.dp)
+            .size(40.dp)
             .testTag(testTag)
+            .semantics {
+                this.contentDescription = contentDescription
+                this.role = Role.Button
+            }
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(18.dp),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
                 tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             )
         }

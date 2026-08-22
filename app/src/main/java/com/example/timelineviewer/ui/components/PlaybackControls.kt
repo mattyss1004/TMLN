@@ -1,4 +1,3 @@
-package com.example.timelineviewer.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -6,6 +5,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
@@ -83,13 +88,13 @@ fun PlaybackControls(
             ) {
                 PlaybackIconButton(
                     icon = Icons.Default.SkipPrevious,
-                    description = "Skip to Start",
+                    description = "Skip to start of journey",
                     onClick = onSkipToStart,
                     testTag = "skip_to_start"
                 )
                 PlaybackIconButton(
                     icon = Icons.Default.FastRewind,
-                    description = "Rewind 5 points",
+                    description = "Rewind 5 timeline points",
                     onClick = { onSeekToIndex((safeIndex - 5).coerceAtLeast(0)) },
                     testTag = "skip_back_5"
                 )
@@ -100,8 +105,12 @@ fun PlaybackControls(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier
-                        .size(54.dp)
+                        .size(56.dp)
                         .testTag("play_pause_button")
+                        .semantics {
+                            contentDescription = if (isPlaying) "Pause journey replay" else "Play journey replay"
+                            role = Role.Button
+                        }
                 ) {
                     AnimatedContent(
                         targetState = isPlaying,
@@ -110,21 +119,21 @@ fun PlaybackControls(
                     ) { playing ->
                         Icon(
                             imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (playing) "Pause" else "Play",
-                            modifier = Modifier.size(28.dp)
+                            contentDescription = null,
+                            modifier = Modifier.size(30.dp)
                         )
                     }
                 }
 
                 PlaybackIconButton(
                     icon = Icons.Default.FastForward,
-                    description = "Forward 5 points",
+                    description = "Forward 5 timeline points",
                     onClick = { onSeekToIndex((safeIndex + 5).coerceAtMost(safeTotalPoints - 1)) },
                     testTag = "skip_forward_5"
                 )
                 PlaybackIconButton(
                     icon = Icons.Default.SkipNext,
-                    description = "Skip to End",
+                    description = "Skip to end of journey",
                     onClick = onSkipToEnd,
                     testTag = "skip_to_end"
                 )
@@ -188,7 +197,10 @@ private fun PlaybackHeader(
 
         Surface(
             shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.semantics {
+                contentDescription = "Point ${safeIndex + 1} of $safeTotalPoints"
+            }
         ) {
             Text(
                 text = "${safeIndex + 1} / $safeTotalPoints",
@@ -220,6 +232,9 @@ private fun TimelineScrubber(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("playback_slider")
+                .semantics {
+                    contentDescription = "Timeline position scrubber. Currently at point ${safeIndex + 1} of $safeTotalPoints, ${(progress * 100).toInt()}% explored."
+                }
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -256,14 +271,18 @@ private fun PlaybackIconButton(
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         modifier = Modifier
-            .size(38.dp)
+            .size(44.dp)
             .testTag(testTag)
+            .semantics {
+                contentDescription = description
+                role = Role.Button
+            }
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
-                contentDescription = description,
-                modifier = Modifier.size(21.dp),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
                 tint = MaterialTheme.colorScheme.onSurface
             )
         }
@@ -302,7 +321,11 @@ private fun PlaybackSpeedRow(
                     onClick = { onSpeedChange(speed) },
                     label = { Text("${speed}×", style = MaterialTheme.typography.labelSmall) },
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.testTag("speed_chip_${speed}")
+                    modifier = Modifier
+                        .testTag("speed_chip_${speed}")
+                        .semantics {
+                            contentDescription = "Replay speed multiplier ${speed}x"
+                        }
                 )
             }
         }

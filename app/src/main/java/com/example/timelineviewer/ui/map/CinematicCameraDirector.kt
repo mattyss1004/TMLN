@@ -1,4 +1,3 @@
-package com.example.timelineviewer.ui.map
 
 import com.example.timelineviewer.data.model.RoutePoint
 import kotlin.math.abs
@@ -25,35 +24,39 @@ object CinematicCameraDirector {
         val safeIndex = activePointIndex.coerceIn(0, points.lastIndex)
         val active = points[safeIndex]
         val effectiveBearing = calculateSmoothedBearing(points, safeIndex)
+        val activeSpeed = active.speedKmh.toDouble().coerceAtLeast(0.0)
+
+        // Dynamic zoom adjustment based on travel velocity
+        val speedZoomOffset = (activeSpeed / 80.0).coerceIn(0.0, 1.8)
 
         return when (mode) {
             JourneyCameraMode.OVERVIEW -> JourneyCameraPose(
                 latitude = points.map { it.latitude }.average(),
                 longitude = points.map { it.longitude }.average(),
                 zoom = overviewZoom(points),
-                pitch = 52.0,
+                pitch = 50.0,
                 bearing = 0.0
             )
             JourneyCameraMode.FOLLOW -> JourneyCameraPose(
                 latitude = active.latitude,
                 longitude = active.longitude,
-                zoom = 16.2,
+                zoom = (16.4 - speedZoomOffset).coerceIn(13.5, 17.5),
                 pitch = 58.0,
                 bearing = normalizeBearing(effectiveBearing)
             )
             JourneyCameraMode.CINEMA -> JourneyCameraPose(
                 latitude = active.latitude,
                 longitude = active.longitude,
-                zoom = 15.2,
-                pitch = 72.0,
-                bearing = normalizeBearing(effectiveBearing - 16.0)
+                zoom = (15.5 - speedZoomOffset * 0.8).coerceIn(13.0, 16.8),
+                pitch = (70.0 + speedZoomOffset * 3.0).coerceAtMost(78.0),
+                bearing = normalizeBearing(effectiveBearing - 18.0)
             )
             JourneyCameraMode.ORBIT -> JourneyCameraPose(
                 latitude = active.latitude,
                 longitude = active.longitude,
-                zoom = 15.4,
-                pitch = 66.0,
-                bearing = normalizeBearing(effectiveBearing + 62.0)
+                zoom = (15.6 - speedZoomOffset * 0.5).coerceIn(13.2, 17.0),
+                pitch = 64.0,
+                bearing = normalizeBearing(effectiveBearing + 65.0 + (safeIndex % 360) * 0.4)
             )
         }
     }
@@ -61,10 +64,14 @@ object CinematicCameraDirector {
     private fun calculateSmoothedBearing(points: List<RoutePoint>, index: Int): Double {
         val current = points[index]
         
-        // Look ahead and behind up to 3 points to derive a stable, non-jittery travel direction
-        val window = 3
-        val prevIndex = (index - window).coerceAtLeast(0)
-        val nextIndex = (index + window).coerceAtMost(points.lastIndex)
+        // Multi-point window for smooth bearing estimation without position jitter
+        val lookaround = 4
+        val prevIndex = (index - lookaround).coerceAtLeast(0)
+        val nextIndex = (index + lookaround).coerceAtMost(points.lastIndex)
+
+        if (prevIndex == nextIndex) {
+            return current.bearing.toDouble().takeIf { it != 0.0 } ?: 0.0
+        }
 
         val prevPoint = points[prevIndex]
         val nextPoint = points[nextIndex]
@@ -72,8 +79,7 @@ object CinematicCameraDirector {
         val latDiff = nextPoint.latitude - prevPoint.latitude
         val lonDiff = nextPoint.longitude - prevPoint.longitude
 
-        // If movement within the window is negligible, fallback to point's explicit bearing or 0.0
-        if (abs(latDiff) < 0.00001 && abs(lonDiff) < 0.00001) {
+        if (abs(latDiff) < 0.000008 && abs(lonDiff) < 0.000008) {
             return current.bearing.toDouble().takeIf { it != 0.0 } ?: 0.0
         }
 
