@@ -82,11 +82,11 @@ object RelivePlaybackClock {
         p3: RoutePoint,
         t: Float
     ): RoutePoint {
-        val clampedT = t.coerceIn(0f, 1f).toDouble()
-        val lat = catmullRom(p0.latitude, p1.latitude, p2.latitude, p3.latitude, clampedT)
-        val lon = catmullRom(p0.longitude, p1.longitude, p2.longitude, p3.longitude, clampedT)
-        val speed = catmullRom(p0.speedKmh.toDouble(), p1.speedKmh.toDouble(), p2.speedKmh.toDouble(), p3.speedKmh.toDouble(), clampedT)
-        val timestamp = p1.timestamp + ((p2.timestamp - p1.timestamp).toDouble() * clampedT).toLong()
+        val clampedTDouble = t.coerceIn(0f, 1f).toDouble()
+        val lat = catmullRom(p0.latitude, p1.latitude, p2.latitude, p3.latitude, clampedTDouble)
+        val lon = catmullRom(p0.longitude, p1.longitude, p2.longitude, p3.longitude, clampedTDouble)
+        val speed = catmullRom(p0.speedKmh.toDouble(), p1.speedKmh.toDouble(), p2.speedKmh.toDouble(), p3.speedKmh.toDouble(), clampedTDouble)
+        val timestamp = p1.timestamp + ((p2.timestamp - p1.timestamp).toDouble() * clampedTDouble).toLong()
 
         return p1.copy(
             latitude = lat,
