@@ -1,4 +1,3 @@
-package com.example.timelineviewer.ui.map
 
 import com.example.timelineviewer.data.model.RoutePoint
 import org.junit.Assert.assertEquals
@@ -36,7 +35,7 @@ class CinematicCameraDirectorTest {
         val overview = CinematicCameraDirector.poseFor(JourneyCameraMode.OVERVIEW, route, 1)!!
 
         assertEquals(0.0, overview.bearing, 0.001)
-        assertEquals(52.0, overview.pitch, 0.001)
+        assertEquals(50.0, overview.pitch, 0.001)
         assertTrue(overview.latitude in route.first().latitude..route.last().latitude)
         assertTrue(overview.longitude in route.first().longitude..route.last().longitude)
     }

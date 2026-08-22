@@ -22,7 +22,7 @@ object CinematicCameraDirector {
         mode: JourneyCameraMode,
         points: List<RoutePoint>,
         activePointIndex: Int,
-        showThreeDObjects: Boolean = true
+        showThreeDObjects: Boolean = false
     ): JourneyCameraPose? {
         return poseForInterpolated(mode, points, activePointIndex, 0f, null, showThreeDObjects)
     }
@@ -33,7 +33,7 @@ object CinematicCameraDirector {
         activePointIndex: Int,
         subIndexProgress: Float = 0f,
         previousBearing: Double? = null,
-        showThreeDObjects: Boolean = true
+        showThreeDObjects: Boolean = false
     ): JourneyCameraPose? {
         if (points.isEmpty()) return null
         val safeIndex = activePointIndex.coerceIn(0, points.lastIndex)
